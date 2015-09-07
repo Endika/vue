@@ -43,6 +43,17 @@ if (_.inBrowser) {
       assertMutations(vm, el, done)
     })
 
+    it('item in list syntax', function (done) {
+      var vm = new Vue({
+        el: el,
+        data: {
+          items: [{a: 1}, {a: 2}]
+        },
+        template: '<div v-repeat="item in items">{{$index}} {{item.a}}</div>'
+      })
+      assertMutations(vm, el, done)
+    })
+
     it('primitive with identifier', function (done) {
       var vm = new Vue({
         el: el,
@@ -560,7 +571,7 @@ if (_.inBrowser) {
       }
     })
 
-    it('warn duplicate objects', function () {
+    it('warn duplicate objects on initial render', function () {
       var obj = {}
       new Vue({
         el: el,
@@ -572,6 +583,23 @@ if (_.inBrowser) {
       expect(hasWarned(_, 'Duplicate objects')).toBe(true)
     })
 
+    it('warn duplicate objects on diff', function (done) {
+      var obj = {}
+      var vm = new Vue({
+        el: el,
+        template: '<div v-repeat="items"></div>',
+        data: {
+          items: [obj]
+        }
+      })
+      expect(_.warn).not.toHaveBeenCalled()
+      vm.items.push(obj)
+      _.nextTick(function () {
+        expect(hasWarned(_, 'Duplicate objects')).toBe(true)
+        done()
+      })
+    })
+
     it('warn duplicate trackby id', function () {
       new Vue({
         el: el,
@@ -580,7 +608,7 @@ if (_.inBrowser) {
           items: [{id: 1}, {id: 1}]
         }
       })
-      expect(hasWarned(_, 'Duplicate track-by key')).toBe(true)
+      expect(hasWarned(_, 'Duplicate objects with the same track-by key')).toBe(true)
     })
 
     it('warn v-if', function () {
@@ -658,19 +686,23 @@ if (_.inBrowser) {
           '<div v-repeat="obj">{{$value}}</div>' +
           '<div v-repeat="val:vals">{{val}}</div>',
         data: {
-          items: ['a', 'b'],
+          items: ['a', true],
           obj: { foo: 'a', bar: 'b' },
-          vals: [1, 2]
+          vals: [1, null]
         }
       })
       vm.$children[0].$value = 'c'
+      vm.$children[1].$value = 'd'
       var key = vm.$children[2].$key
-      vm.$children[2].$value = 'd'
+      vm.$children[2].$value = 'e'
       vm.$children[4].val = 3
+      vm.$children[5].val = 4
       _.nextTick(function () {
         expect(vm.items[0]).toBe('c')
-        expect(vm.obj[key]).toBe('d')
+        expect(vm.items[1]).toBe('d')
+        expect(vm.obj[key]).toBe('e')
         expect(vm.vals[0]).toBe(3)
+        expect(vm.vals[1]).toBe(4)
         done()
       })
     })

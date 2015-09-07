@@ -2,6 +2,7 @@ var _ = require('../util')
 var compiler = require('../compiler')
 var Observer = require('../observer')
 var Dep = require('../observer/dep')
+var Watcher = require('../watcher')
 
 /**
  * Setup the scope of an instance, which contains:
@@ -28,14 +29,14 @@ exports._initProps = function () {
   var el = options.el
   var props = options.props
   if (props && !el) {
-    _.warn(
+    process.env.NODE_ENV !== 'production' && _.warn(
       'Props will not be compiled if no `el` option is ' +
       'provided at instantiation.'
     )
   }
   // make sure to convert string selectors into element now
   el = options.el = _.query(el)
-  this._propsUnlinkFn = el && props
+  this._propsUnlinkFn = el && el.nodeType === 1 && props
     ? compiler.compileAndLinkProps(
         this, el, props
       )
@@ -54,8 +55,8 @@ exports._initData = function () {
     this._data = optionsData
     for (var prop in propsData) {
       if (
-        !optionsData.hasOwnProperty(prop) ||
-        propsData[prop] !== undefined
+        this._props[prop].raw !== null ||
+        !optionsData.hasOwnProperty(prop)
       ) {
         optionsData.$set(prop, propsData[prop])
       }
@@ -73,7 +74,7 @@ exports._initData = function () {
     }
   }
   // observe data
-  Observer.create(data).addVm(this)
+  Observer.create(data, this)
 }
 
 /**
@@ -121,7 +122,7 @@ exports._setData = function (newData) {
     }
   }
   oldData.__ob__.removeVm(this)
-  Observer.create(newData).addVm(this)
+  Observer.create(newData, this)
   this._digest()
 }
 
@@ -166,7 +167,7 @@ exports._unproxy = function (key) {
 exports._digest = function () {
   var i = this._watchers.length
   while (i--) {
-    this._watchers[i].update()
+    this._watchers[i].update(true) // shallow updates
   }
   var children = this.$children
   i = children.length
@@ -194,11 +195,13 @@ exports._initComputed = function () {
         configurable: true
       }
       if (typeof userDef === 'function') {
-        def.get = _.bind(userDef, this)
+        def.get = makeComputedGetter(userDef, this)
         def.set = noop
       } else {
         def.get = userDef.get
-          ? _.bind(userDef.get, this)
+          ? userDef.cache !== false
+            ? makeComputedGetter(userDef.get, this)
+            : _.bind(userDef.get, this)
           : noop
         def.set = userDef.set
           ? _.bind(userDef.set, this)
@@ -206,6 +209,21 @@ exports._initComputed = function () {
       }
       Object.defineProperty(this, key, def)
     }
+  }
+}
+
+function makeComputedGetter (getter, owner) {
+  var watcher = new Watcher(owner, getter, null, {
+    lazy: true
+  })
+  return function computedGetter () {
+    if (watcher.dirty) {
+      watcher.evaluate()
+    }
+    if (Dep.target) {
+      watcher.depend()
+    }
+    return watcher.value
   }
 }
 
@@ -248,10 +266,10 @@ exports._initMeta = function () {
 exports._defineMeta = function (key, value) {
   var dep = new Dep()
   Object.defineProperty(this, key, {
-    enumerable: true,
-    configurable: true,
     get: function metaGetter () {
-      dep.depend()
+      if (Dep.target) {
+        dep.depend()
+      }
       return value
     },
     set: function metaSetter (val) {

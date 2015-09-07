@@ -48,25 +48,25 @@ if (_.inBrowser) {
       var vm = new Vue({
         el: el,
         data: {
-          test: 'a'
+          test: '1'
         },
         template:
-          '<input type="radio" value="a" v-model="test" name="test">' +
-          '<input type="radio" value="b" v-model="test" name="test">'
+          '<input type="radio" value="1" v-model="test" name="test" number>' +
+          '<input type="radio" value="2" v-model="test" name="test">'
       })
       expect(el.childNodes[0].checked).toBe(true)
       expect(el.childNodes[1].checked).toBe(false)
-      vm.test = 'b'
+      vm.test = '2'
       _.nextTick(function () {
         expect(el.childNodes[0].checked).toBe(false)
         expect(el.childNodes[1].checked).toBe(true)
         el.childNodes[0].click()
         expect(el.childNodes[0].checked).toBe(true)
         expect(el.childNodes[1].checked).toBe(false)
-        expect(vm.test).toBe('a')
-        vm._directives[1].unbind()
+        expect(vm.test).toBe(1)
+        vm._directives[1]._teardown()
         el.childNodes[1].click()
-        expect(vm.test).toBe('a')
+        expect(vm.test).toBe(1)
         done()
       })
     })
@@ -78,6 +78,34 @@ if (_.inBrowser) {
         template: '<input type="radio" checked value="a" v-model="test">'
       })
       expect(vm.test).toBe('a')
+    })
+
+    it('radio expression', function (done) {
+      var vm = new Vue({
+        el: el,
+        data: {
+          test: false,
+          test2: 'string1',
+          expression1: 'string1',
+          expression2: 'string2'
+        },
+        template:
+          '<input type="radio" value="1" v-model="test" name="test" exp="true">' +
+          '<input type="radio" value="0" v-model="test" name="test" exp="false">' +
+          '<input type="radio" value="1" v-model="test2" name="test2" exp="expression1">' +
+          '<input type="radio" value="0" v-model="test2" name="test2" exp="expression2">'
+      })
+      expect(el.childNodes[0].checked).toBe(false)
+      expect(el.childNodes[1].checked).toBe(true)
+      expect(el.childNodes[2].checked).toBe(true)
+      expect(el.childNodes[3].checked).toBe(false)
+      _.nextTick(function () {
+        el.childNodes[0].click()
+        expect(vm.test).toBe(true)
+        el.childNodes[3].click()
+        expect(vm.test2).toBe('string2')
+        done()
+      })
     })
 
     it('checkbox', function (done) {
@@ -96,7 +124,7 @@ if (_.inBrowser) {
         el.firstChild.click()
         expect(el.firstChild.checked).toBe(true)
         expect(vm.test).toBe(true)
-        vm._directives[0].unbind()
+        vm._directives[0]._teardown()
         el.firstChild.click()
         expect(el.firstChild.checked).toBe(false)
         expect(vm.test).toBe(true)
@@ -111,6 +139,32 @@ if (_.inBrowser) {
         template: '<input type="checkbox" checked v-model="test">'
       })
       expect(vm.test).toBe(true)
+    })
+
+    it('checkbox expression', function (done) {
+      var vm = new Vue({
+        el: el,
+        data: {
+          test: '',
+          expression1: 'aTrueValue',
+          expression2: 'aFalseValue'
+        },
+        template: '<input type="checkbox" v-model="test" true-exp="expression1" false-exp="expression2">'
+      })
+      expect(vm.test).toBe('')
+      el.firstChild.click()
+      expect(vm.test).toBe('aTrueValue')
+      expect(el.firstChild.checked).toBe(true)
+      el.firstChild.click()
+      expect(vm.test).toBe('aFalseValue')
+      expect(el.firstChild.checked).toBe(false)
+      _.nextTick(function () {
+        vm.test = 'aTrueValue'
+        _.nextTick(function () {
+          expect(el.firstChild.checked).toBe(true)
+          done()
+        })
+      })
     })
 
     it('select', function (done) {
@@ -140,7 +194,29 @@ if (_.inBrowser) {
       })
     })
 
-    it('select default value', function () {
+    it('select persist non-selected on append', function () {
+      var vm = new Vue({
+        el: el,
+        data: {
+          test: null
+        },
+        replace: true,
+        template:
+          '<select v-model="test">' +
+            '<option>a</option>' +
+            '<option>b</option>' +
+            '<option>c</option>' +
+          '</select>'
+      })
+      expect(vm.$el.value).toBe('')
+      expect(vm.$el.selectedIndex).toBe(-1)
+      vm.$remove()
+      vm.$appendTo(document.body)
+      expect(vm.$el.value).toBe('')
+      expect(vm.$el.selectedIndex).toBe(-1)
+    })
+
+    it('select template default value', function () {
       var vm = new Vue({
         el: el,
         data: {
@@ -291,6 +367,72 @@ if (_.inBrowser) {
       expect(opts[2].selected).toBe(false)
     })
 
+    it('select + options with Object value', function (done) {
+      var vm = new Vue({
+        el: el,
+        data: {
+          test: { msg: 'A' },
+          opts: [
+            { text: 'a', value: { msg: 'A' }},
+            { text: 'b', value: { msg: 'B' }}
+          ]
+        },
+        template: '<select v-model="test" options="opts"></select>'
+      })
+      var select = el.firstChild
+      var opts = select.options
+      expect(opts[0].selected).toBe(true)
+      expect(opts[1].selected).toBe(false)
+      expect(vm.test.msg).toBe('A')
+      opts[1].selected = true
+      trigger(select, 'change')
+      _.nextTick(function () {
+        expect(opts[0].selected).toBe(false)
+        expect(opts[1].selected).toBe(true)
+        expect(vm.test.msg).toBe('B')
+        vm.test = { msg: 'A' }
+        _.nextTick(function () {
+          expect(opts[0].selected).toBe(true)
+          expect(opts[1].selected).toBe(false)
+          done()
+        })
+      })
+    })
+
+    it('select + options + multiple + Object value', function (done) {
+      var vm = new Vue({
+        el: el,
+        data: {
+          test: [{ msg: 'A' }, { msg: 'B'}],
+          opts: [
+            { text: 'a', value: { msg: 'A' }},
+            { text: 'b', value: { msg: 'B' }},
+            { text: 'c', value: { msg: 'C' }}
+          ]
+        },
+        template: '<select v-model="test" options="opts" multiple></select>'
+      })
+      var select = el.firstChild
+      var opts = select.options
+      expect(opts[0].selected).toBe(true)
+      expect(opts[1].selected).toBe(true)
+      expect(opts[2].selected).toBe(false)
+      vm.test = [{ msg: 'C' }]
+      _.nextTick(function () {
+        expect(opts[0].selected).toBe(false)
+        expect(opts[1].selected).toBe(false)
+        expect(opts[2].selected).toBe(true)
+        opts[1].selected = true
+        opts[2].selected = false
+        trigger(select, 'change')
+        _.nextTick(function () {
+          expect(vm.test.length).toBe(1)
+          expect(vm.test[0].msg).toBe('B')
+          done()
+        })
+      })
+    })
+
     it('select + number', function () {
       var vm = new Vue({
         el: el,
@@ -347,9 +489,37 @@ if (_.inBrowser) {
         template: '<select v-model="test" options="opts | aFilter"></select>'
       })
       expect(el.firstChild.innerHTML).toBe(
-          '<option value="a0">a0</option>' +
-          '<option value="b1">b1</option>'
+        '<option value="a0">a0</option>' +
+        '<option value="b1">b1</option>'
       )
+    })
+
+    it('select + options + static option', function (done) {
+      var vm = new Vue({
+        el: el,
+        data: {
+          opts: ['a', 'b']
+        },
+        template:
+          '<select v-model="test" options="opts">' +
+            '<option value="">default...</option>' +
+          '</select>'
+      })
+      expect(el.firstChild.innerHTML).toBe(
+        '<option value="">default...</option>' +
+        '<option value="a">a</option>' +
+        '<option value="b">b</option>'
+      )
+      expect(el.firstChild.options[0].selected).toBe(true)
+      vm.opts = ['c']
+      _.nextTick(function () {
+        expect(el.firstChild.innerHTML).toBe(
+          '<option value="">default...</option>' +
+          '<option value="c">c</option>'
+        )
+        expect(el.firstChild.options[0].selected).toBe(true)
+        done()
+      })
     })
 
     it('text', function (done) {
@@ -367,7 +537,7 @@ if (_.inBrowser) {
         el.firstChild.value = 'c'
         trigger(el.firstChild, 'input')
         expect(vm.test).toBe('c')
-        vm._directives[0].unbind()
+        vm._directives[0]._teardown()
         el.firstChild.value = 'd'
         trigger(el.firstChild, 'input')
         expect(vm.test).toBe('c')
@@ -430,17 +600,21 @@ if (_.inBrowser) {
         template: '<input v-model="test | uppercase | test">'
       })
       expect(el.firstChild.value).toBe('B')
+      trigger(el.firstChild, 'focus')
       el.firstChild.value = 'cc'
       trigger(el.firstChild, 'input')
       _.nextTick(function () {
-        expect(el.firstChild.value).toBe('CC')
+        expect(el.firstChild.value).toBe('cc')
         expect(vm.test).toBe('cc')
-        done()
+        trigger(el.firstChild, 'blur')
+        _.nextTick(function () {
+          expect(el.firstChild.value).toBe('CC')
+          expect(vm.test).toBe('cc')
+          done()
+        })
       })
     })
 
-    // when there's only write filter, should allow
-    // out of sync between the input field and actual data
     it('text with only write filter', function (done) {
       var vm = new Vue({
         el: el,
@@ -456,12 +630,18 @@ if (_.inBrowser) {
         },
         template: '<input v-model="test | test">'
       })
+      trigger(el.firstChild, 'focus')
       el.firstChild.value = 'cc'
       trigger(el.firstChild, 'input')
       _.nextTick(function () {
         expect(el.firstChild.value).toBe('cc')
         expect(vm.test).toBe('CC')
-        done()
+        trigger(el.firstChild, 'blur')
+        _.nextTick(function () {
+          expect(el.firstChild.value).toBe('CC')
+          expect(vm.test).toBe('CC')
+          done()
+        })
       })
     })
 
@@ -500,7 +680,7 @@ if (_.inBrowser) {
         })
         expect(vm.test).toBe('a')
         // teardown
-        vm._directives[0].unbind()
+        vm._directives[0]._teardown()
         input.value = 'bbb'
         trigger(input, 'keyup', function (e) {
           e.keyCode = 8
@@ -597,7 +777,7 @@ if (_.inBrowser) {
         data: {
           test: 'b'
         },
-        template: '<input v-model="test" lazy>'
+        template: '<input v-model="test">'
       })
       expect(el.firstChild.value).toBe('b')
       vm.test = 'a'
@@ -606,7 +786,7 @@ if (_.inBrowser) {
         el.firstChild.value = 'c'
         jQuery(el.firstChild).trigger('change')
         expect(vm.test).toBe('c')
-        vm._directives[0].unbind()
+        vm._directives[0]._teardown()
         el.firstChild.value = 'd'
         jQuery(el.firstChild).trigger('change')
         expect(vm.test).toBe('c')

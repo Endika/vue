@@ -66,6 +66,8 @@ describe('Filters', function () {
     expect(filter(0.76)).toBe('$0.76')
     // sign arg
     expect(filter(2134, '@')).toBe('@2,134.00')
+    // no symbol
+    expect(filter(2134, '')).toBe('2,134.00')
     // falsy, infinity and 0
     expect(filter(0)).toBe('$0.00')
     expect(filter(false)).toBe('')
@@ -96,6 +98,31 @@ describe('Filters', function () {
     expect(spy).toHaveBeenCalled()
   })
 
+  it('debounce', function (done) {
+    var filter = filters.debounce
+    expect(filter(null)).toBeUndefined()
+    var spy = jasmine.createSpy('filter:debounce')
+    var handler = filter(spy)
+    handler()
+    expect(spy).not.toHaveBeenCalled()
+    handler = filter(spy)
+    handler()
+    setTimeout(function () {
+      expect(spy).toHaveBeenCalled()
+    }, 400)
+    var spy2 = jasmine.createSpy('filter:debounce')
+    handler = filter(spy2, 450)
+    handler()
+    handler()
+    setTimeout(function () {
+      expect(spy2).not.toHaveBeenCalled()
+    }, 400)
+    setTimeout(function () {
+      expect(spy2.calls.count()).toBe(1)
+      done()
+    }, 500)
+  })
+
   it('filterBy', function () {
     var filter = filters.filterBy
     var arr = [
@@ -106,31 +133,52 @@ describe('Filters', function () {
     var res
     // normal
     res = filter(arr, 'hello')
-    expect(res.length).toBe(2)
-    expect(res[0]).toBe(arr[0])
-    expect(res[1]).toBe(arr[1])
+    assertArray(res, [arr[0], arr[1]])
     // data key
     res = filter(arr, 'hello', 'b.c')
-    expect(res.length).toBe(1)
-    expect(res[0]).toBe(arr[0])
+    assertArray(res, [arr[0]])
     // delimiter
     res = filter(arr, 'hello', 'in', 'b.c')
-    expect(res.length).toBe(1)
-    expect(res[0]).toBe(arr[0])
+    assertArray(res, [arr[0]])
     // no search key
     res = filter(arr, null)
     expect(res).toBe(arr)
     // number search key
     res = filter(arr, 2)
-    expect(res[0]).toBe(arr[1])
+    assertArray(res, [arr[1]])
     // search in sub array
     res = filter(arr, 'yoyo')
-    expect(res.length).toBe(1)
-    expect(res[0]).toBe(arr[2])
+    assertArray(res, [arr[2]])
     // filter by false (#928)
-    res = filter([{a: false}, {b: true}], false)
-    expect(res.length).toBe(1)
-    expect(res[0].a).toBe(false)
+    arr = [{a: false}, {b: true}]
+    res = filter(arr, false)
+    assertArray(res, [arr[0]])
+    // filter by a function
+    res = filter(arr, function (val) {
+      return val.b === true
+    })
+    assertArray(res, [arr[1]])
+  })
+
+  it('filterBy multiple keys', function () {
+    var filter = filters.filterBy
+    var arr = [
+      { firstname: 'A', lastname: 'B' },
+      { firstname: 'C', lastname: 'B' },
+      { firstname: 'A', lastname: 'D' }
+    ]
+    // multiple string keys
+    var res
+    res = filter(arr, 'A', 'in', 'firstname', 'lastname')
+    assertArray(res, [arr[0], arr[2]])
+    // array of keys
+    res = filter(arr, 'B', ['firstname', 'lastname'])
+    assertArray(res, [arr[0], arr[1]])
+    // multiple arrays of keys
+    res = filter(arr, 'C', 'in', ['firstname'], ['lastname'])
+    assertArray(res, [arr[1]])
+    res = filter(arr, 'A', ['firstname', 'lastname'], [])
+    assertArray(res, [arr[0], arr[2]])
   })
 
   it('orderBy', function () {
@@ -143,28 +191,16 @@ describe('Filters', function () {
     var res
     // sort key
     res = filter(arr, 'a.b')
-    expect(res.length).toBe(3)
-    expect(res[0].a.b).toBe(0)
-    expect(res[1].a.b).toBe(1)
-    expect(res[2].a.b).toBe(2)
+    assertArray(res, [arr[0], arr[2], arr[1]])
     // reverse key
     res = filter(arr, 'a.b', true)
-    expect(res.length).toBe(3)
-    expect(res[0].a.b).toBe(2)
-    expect(res[1].a.b).toBe(1)
-    expect(res[2].a.b).toBe(0)
+    assertArray(res, [arr[1], arr[2], arr[0]])
     // literal args
     res = filter(arr, 'c', '-1')
-    expect(res.length).toBe(3)
-    expect(res[0].c).toBe('c')
-    expect(res[1].c).toBe('b')
-    expect(res[2].c).toBe('a')
+    assertArray(res, [arr[1], arr[0], arr[2]])
     // negate reverse
     res = filter(arr, 'c', false)
-    expect(res.length).toBe(3)
-    expect(res[0].c).toBe('a')
-    expect(res[1].c).toBe('b')
-    expect(res[2].c).toBe('c')
+    assertArray(res, [arr[2], arr[0], arr[1]])
     // no sort key
     res = filter(arr, null)
     expect(res).toBe(arr)
@@ -179,13 +215,9 @@ describe('Filters', function () {
       { $key: 'b', $value: 2 }
     ]
     var res = filter(arr, '$key')
-    expect(res[0].$value).toBe(3)
-    expect(res[1].$value).toBe(2)
-    expect(res[2].$value).toBe(1)
+    assertArray(res, [arr[0], arr[2], arr[1]])
     res = filter(arr, '$value')
-    expect(res[0].$value).toBe(1)
-    expect(res[1].$value).toBe(2)
-    expect(res[2].$value).toBe(3)
+    assertArray(res, [arr[1], arr[2], arr[0]])
     // normal keys
     arr = [
       { $key: 'a', $value: { v: 3 } },
@@ -193,11 +225,16 @@ describe('Filters', function () {
       { $key: 'b', $value: { v: 2 } }
     ]
     res = filter(arr, 'v')
-    expect(res[0].$value.v).toBe(1)
-    expect(res[1].$value.v).toBe(2)
-    expect(res[2].$value.v).toBe(3)
+    assertArray(res, [arr[1], arr[2], arr[0]])
   })
 })
+
+function assertArray (res, expectations) {
+  expect(res.length).toBe(expectations.length)
+  expectations.forEach(function (exp, i) {
+    expect(exp).toBe(res[i])
+  })
+}
 
 function assertNumberAndFalsy (filter) {
   // should stringify numbers

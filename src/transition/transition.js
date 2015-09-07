@@ -10,6 +10,8 @@ var animDurationProp = _.animationProp + 'Duration'
 var TYPE_TRANSITION = 1
 var TYPE_ANIMATION = 2
 
+var uid = 0
+
 /**
  * A Transition object that encapsulates the state and logic
  * of the transition.
@@ -21,6 +23,7 @@ var TYPE_ANIMATION = 2
  */
 
 function Transition (el, id, hooks, vm) {
+  this.id = uid++
   this.el = el
   this.enterClass = id + '-enter'
   this.leaveClass = id + '-leave'
@@ -33,6 +36,7 @@ function Transition (el, id, hooks, vm) {
   this.pendingJsCb =
   this.op =
   this.cb = null
+  this.justEntered = false
   this.typeCache = {}
   // bind
   var self = this
@@ -87,16 +91,24 @@ p.enter = function (op, cb) {
  */
 
 p.enterNextTick = function () {
-  var type = this.getCssTransitionType(this.enterClass)
+  this.justEntered = true
+  _.nextTick(function () {
+    this.justEntered = false
+  }, this)
   var enterDone = this.enterDone
-  if (type === TYPE_TRANSITION) {
-    // trigger transition by removing enter class now
+  var type = this.getCssTransitionType(this.enterClass)
+  if (!this.pendingJsCb) {
+    if (type === TYPE_TRANSITION) {
+      // trigger transition by removing enter class now
+      removeClass(this.el, this.enterClass)
+      this.setupCssCb(transitionEndEvent, enterDone)
+    } else if (type === TYPE_ANIMATION) {
+      this.setupCssCb(animationEndEvent, enterDone)
+    } else {
+      enterDone()
+    }
+  } else if (type === TYPE_TRANSITION) {
     removeClass(this.el, this.enterClass)
-    this.setupCssCb(transitionEndEvent, enterDone)
-  } else if (type === TYPE_ANIMATION) {
-    this.setupCssCb(animationEndEvent, enterDone)
-  } else if (!this.pendingJsCb) {
-    enterDone()
   }
 }
 
@@ -139,11 +151,20 @@ p.leave = function (op, cb) {
   this.cb = cb
   addClass(this.el, this.leaveClass)
   this.callHookWithCb('leave')
-  this.cancel = this.hooks && this.hooks.enterCancelled
-  // only need to do leaveNextTick if there's no explicit
-  // js callback
-  if (!this.pendingJsCb) {
-    queue.push(this.leaveNextTick)
+  this.cancel = this.hooks && this.hooks.leaveCancelled
+  // only need to handle leaveDone if
+  // 1. the transition is already done (synchronously called
+  //    by the user, which causes this.op set to null)
+  // 2. there's no explicit js callback
+  if (this.op && !this.pendingJsCb) {
+    // if a CSS transition leaves immediately after enter,
+    // the transitionend event never fires. therefore we
+    // detect such cases and end the leave immediately.
+    if (this.justEntered) {
+      this.leaveDone()
+    } else {
+      queue.push(this.leaveNextTick)
+    }
   }
 }
 
@@ -173,6 +194,7 @@ p.leaveDone = function () {
   removeClass(this.el, this.leaveClass)
   this.callHook('afterLeave')
   if (this.cb) this.cb()
+  this.op = null
 }
 
 /**

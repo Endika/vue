@@ -7,6 +7,14 @@ module.exports = {
   bind: function () {
     var self = this
     var el = this.el
+
+    // method to force update DOM using latest value.
+    this.forceUpdate = function () {
+      if (self._watcher) {
+        self.update(self._watcher.get())
+      }
+    }
+
     // check options param
     var optionsParam = this._checkParam('options')
     if (optionsParam) {
@@ -14,45 +22,60 @@ module.exports = {
     }
     this.number = this._checkParam('number') != null
     this.multiple = el.hasAttribute('multiple')
-    this.listener = function () {
-      var value = self.multiple
-        ? getMultiValue(el)
-        : el.value
+
+    // attach listener
+    this.on('change', function () {
+      var value = getValue(el, self.multiple)
       value = self.number
         ? _.isArray(value)
           ? value.map(_.toNumber)
           : _.toNumber(value)
         : value
       self.set(value)
-    }
-    _.on(el, 'change', this.listener)
+    })
+
+    // check initial value (inline selected attribute)
     checkInitialValue.call(this)
+
+    // All major browsers except Firefox resets
+    // selectedIndex with value -1 to 0 when the element
+    // is appended to a new parent, therefore we have to
+    // force a DOM update whenever that happens...
+    this.vm.$on('hook:attached', this.forceUpdate)
   },
 
   update: function (value) {
     var el = this.el
     el.selectedIndex = -1
+    if (value == null) {
+      if (this.defaultOption) {
+        this.defaultOption.selected = true
+      }
+      return
+    }
     var multi = this.multiple && _.isArray(value)
     var options = el.options
     var i = options.length
-    var option
+    var op, val
     while (i--) {
-      option = options[i]
+      op = options[i]
+      val = op.hasOwnProperty('_value')
+        ? op._value
+        : op.value
       /* eslint-disable eqeqeq */
-      option.selected = multi
-        ? indexOf(value, option.value) > -1
-        : value == option.value
+      op.selected = multi
+        ? indexOf(value, val) > -1
+        : _.looseEqual(value, val)
       /* eslint-enable eqeqeq */
     }
   },
 
   unbind: function () {
-    _.off(this.el, 'change', this.listener)
+    this.vm.$off('hook:attached', this.forceUpdate)
     if (this.optionWatcher) {
       this.optionWatcher.teardown()
     }
   }
-
 }
 
 /**
@@ -63,16 +86,27 @@ module.exports = {
 
 function initOptions (expression) {
   var self = this
+  var el = self.el
+  var defaultOption = self.defaultOption = self.el.options[0]
   var descriptor = dirParser.parse(expression)[0]
   function optionUpdateWatcher (value) {
     if (_.isArray(value)) {
-      self.el.innerHTML = ''
-      buildOptions(self.el, value)
-      if (self._watcher) {
-        self.update(self._watcher.value)
+      // clear old options.
+      // cannot reset innerHTML here because IE family get
+      // confused during compilation.
+      var i = el.options.length
+      while (i--) {
+        var option = el.options[i]
+        if (option !== defaultOption) {
+          el.removeChild(option)
+        }
       }
+      buildOptions(el, value)
+      self.forceUpdate()
     } else {
-      _.warn('Invalid options value for v-model: ' + value)
+      process.env.NODE_ENV !== 'production' && _.warn(
+        'Invalid options value for v-model: ' + value
+      )
     }
   }
   this.optionWatcher = new Watcher(
@@ -106,10 +140,13 @@ function buildOptions (parent, options) {
       if (typeof op === 'string') {
         el.text = el.value = op
       } else {
-        if (op.value != null) {
+        if (op.value != null && !_.isObject(op.value)) {
           el.value = op.value
         }
-        el.text = op.text || op.value || ''
+        // object values gets serialized when set as value,
+        // so we store the raw value as a different property
+        el._value = op.value
+        el.text = op.text || ''
         if (op.disabled) {
           el.disabled = true
         }
@@ -148,29 +185,35 @@ function checkInitialValue () {
 }
 
 /**
- * Helper to extract a value array for select[multiple]
+ * Get select value
  *
  * @param {SelectElement} el
- * @return {Array}
+ * @param {Boolean} multi
+ * @return {Array|*}
  */
 
-function getMultiValue (el) {
-  return Array.prototype.filter
-    .call(el.options, filterSelected)
-    .map(getOptionValue)
-}
-
-function filterSelected (op) {
-  return op.selected
-}
-
-function getOptionValue (op) {
-  return op.value || op.text
+function getValue (el, multi) {
+  var res = multi ? [] : null
+  var op, val
+  for (var i = 0, l = el.options.length; i < l; i++) {
+    op = el.options[i]
+    if (op.selected) {
+      val = op.hasOwnProperty('_value')
+        ? op._value
+        : op.value
+      if (multi) {
+        res.push(val)
+      } else {
+        return val
+      }
+    }
+  }
+  return res
 }
 
 /**
  * Native Array.indexOf uses strict equal, but in this
- * case we need to match string/numbers with soft equal.
+ * case we need to match string/numbers with custom equal.
  *
  * @param {Array} arr
  * @param {*} val
@@ -179,9 +222,9 @@ function getOptionValue (op) {
 function indexOf (arr, val) {
   var i = arr.length
   while (i--) {
-    /* eslint-disable eqeqeq */
-    if (arr[i] == val) return i
-    /* eslint-enable eqeqeq */
+    if (_.looseEqual(arr[i], val)) {
+      return i
+    }
   }
   return -1
 }

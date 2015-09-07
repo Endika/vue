@@ -1,7 +1,12 @@
 // test cases for edge cases & bug fixes
 var Vue = require('../../../src/vue')
+var _ = require('../../../src/util/debug')
 
 describe('Misc', function () {
+
+  beforeEach(function () {
+    spyOn(_, 'warn')
+  })
 
   it('should handle directive.bind() altering its childNode structure', function () {
     var vm = new Vue({
@@ -136,6 +141,209 @@ describe('Misc', function () {
     vm.ok = false
     Vue.nextTick(function () {
       expect(spy).toHaveBeenCalled()
+      done()
+    })
+  })
+
+  it('frozen model, root', function (done) {
+    var vm = new Vue({
+      el: document.createElement('div'),
+      template: '{{msg}}',
+      data: Object.freeze({
+        msg: 'hi!'
+      })
+    })
+    expect(vm.$el.textContent).toBe('hi!')
+    vm.msg = 'ho!'
+    Vue.nextTick(function () {
+      expect(vm.$el.textContent).toBe('hi!')
+      done()
+    })
+  })
+
+  it('frozen model, non-root', function (done) {
+    var vm = new Vue({
+      el: document.createElement('div'),
+      template: '{{msg}} {{frozen.msg}}',
+      data: {
+        msg: 'hi',
+        frozen: Object.freeze({
+          msg: 'frozen'
+        })
+      }
+    })
+    expect(vm.$el.textContent).toBe('hi frozen')
+    vm.msg = 'ho'
+    vm.frozen.msg = 'changed'
+    Vue.nextTick(function () {
+      expect(vm.$el.textContent).toBe('ho frozen')
+      done()
+    })
+  })
+
+  it('should not trigger deep/Array watchers when digesting', function (done) {
+    var spy1 = jasmine.createSpy('deep')
+    var spy2 = jasmine.createSpy('Array')
+    var spy3 = jasmine.createSpy('test')
+    var spy4 = jasmine.createSpy('deep-mutated')
+    var vm = new Vue({
+      el: 'body',
+      data: {
+        obj: {},
+        arr: [],
+        obj2: {}
+      },
+      watch: {
+        obj: {
+          handler: spy1,
+          deep: true
+        },
+        arr: spy2,
+        // if the watcher is watching the added value,
+        // it should still trigger properly
+        test: {
+          handler: spy3,
+          deep: true
+        },
+        // if the object is in fact mutated, it should
+        // still trigger.
+        obj2: {
+          handler: spy4,
+          deep: true
+        }
+      }
+    })
+    var test = []
+    var obj2 = vm.obj2
+    vm.$add('test', test)
+    obj2.$add('test', 123)
+    Vue.nextTick(function () {
+      expect(spy1).not.toHaveBeenCalled()
+      expect(spy2).not.toHaveBeenCalled()
+      expect(spy3).toHaveBeenCalledWith(test, undefined)
+      expect(spy4).toHaveBeenCalledWith(obj2, obj2)
+      done()
+    })
+  })
+
+  it('strict mode', function () {
+    Vue.config.strict = true
+    new Vue({
+      el: document.createElement('div'),
+      template: '<test></test>',
+      components: {
+        test: {
+          template: '<div v-strict>hi</div>'
+        }
+      },
+      directives: {
+        strict: function () {}
+      }
+    })
+    expect(hasWarned(_, 'Failed to resolve directive: strict')).toBe(true)
+    Vue.config.strict = false
+  })
+
+  it('strict mode for repeat instances', function () {
+    Vue.config.strict = true
+    var vm = new Vue({
+      el: document.createElement('div'),
+      template: '<div v-repeat="list"><test></test></div>',
+      data: {
+        list: [1, 2]
+      },
+      components: {
+        test: {
+          template: 'hi'
+        }
+      }
+    })
+    expect(_.warn).not.toHaveBeenCalled()
+    expect(vm.$el.textContent).toBe('hihi')
+    Vue.config.strict = false
+  })
+
+  it('class interpolation and v-class should work together', function (done) {
+    var el = document.createElement('div')
+    el.setAttribute('class', 'a {{classB}}')
+    el.setAttribute('v-class', 'c: showC')
+    var vm = new Vue({
+      el: el,
+      data: {
+        classB: 'b',
+        showC: true
+      }
+    })
+    assertClasses(['a', 'b', 'c'])
+    vm.classB = 'bb'
+    vm.showC = false
+    Vue.nextTick(function () {
+      assertClasses(['a', 'bb'])
+      done()
+    })
+
+    function assertClasses (expectedClasses) {
+      var classes = el.className.trim().split(/\s+/)
+      expect(classes.length).toBe(expectedClasses.length)
+      var has = expectedClasses.every(function (cls) {
+        return classes.indexOf(cls) > -1
+      })
+      expect(has).toBe(true)
+    }
+  })
+
+  it('handle interpolated textarea', function (done) {
+    var el = document.createElement('div')
+    el.innerHTML = '<textarea>hello {{msg}}</textarea>'
+    var vm = new Vue({
+      el: el,
+      data: {
+        msg: 'test'
+      }
+    })
+    expect(el.innerHTML).toBe('<textarea>hello test</textarea>')
+    vm.msg = 'world'
+    Vue.nextTick(function () {
+      expect(el.innerHTML).toBe('<textarea>hello world</textarea>')
+      done()
+    })
+  })
+
+  it('resolveAsset for repeat instance inside content in strict mode', function () {
+    Vue.config.strict = true
+    var el = document.createElement('div')
+    el.innerHTML =
+      '<outer>' +
+        '<template v-repeat="item in items">' +
+          '<inner>{{item}}</inner>' +
+        '</template>' +
+      '</outer>'
+    new Vue({
+      el: el,
+      data: {
+        items: [1, 2, 3]
+      },
+      components: {
+        outer: { template: '<content></content>' },
+        inner: { template: '<content></content>' }
+      }
+    })
+    expect(el.textContent).toBe('123')
+    Vue.config.strict = false
+  })
+
+  it('nested object $set should trigger parent array notify', function (done) {
+    var vm = new Vue({
+      el: document.createElement('div'),
+      template: '{{items | json}}{{items[0].a}}',
+      data: {
+        items: [{}]
+      }
+    })
+    expect(vm.$el.textContent).toBe(JSON.stringify(vm.items, null, 2))
+    vm.items[0].$set('a', 123)
+    Vue.nextTick(function () {
+      expect(vm.$el.textContent).toBe(JSON.stringify(vm.items, null, 2) + '123')
       done()
     })
   })

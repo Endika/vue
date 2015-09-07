@@ -5,15 +5,6 @@ var arrayMethods = require('./array')
 var arrayKeys = Object.getOwnPropertyNames(arrayMethods)
 require('./object')
 
-var uid = 0
-
-/**
- * Type enums
- */
-
-var ARRAY = 0
-var OBJECT = 1
-
 /**
  * Observer class that are attached to each observed
  * object. Once attached, the observer converts target
@@ -21,23 +12,20 @@ var OBJECT = 1
  * collect dependencies and dispatches updates.
  *
  * @param {Array|Object} value
- * @param {Number} type
  * @constructor
  */
 
-function Observer (value, type) {
-  this.id = ++uid
+function Observer (value) {
   this.value = value
-  this.active = true
-  this.deps = []
+  this.dep = new Dep()
   _.define(value, '__ob__', this)
-  if (type === ARRAY) {
+  if (_.isArray(value)) {
     var augment = config.proto && _.hasProto
       ? protoAugment
       : copyAugment
     augment(value, arrayMethods, arrayKeys)
     this.observeArray(value)
-  } else if (type === OBJECT) {
+  } else {
     this.walk(value)
   }
 }
@@ -50,40 +38,40 @@ function Observer (value, type) {
  * or the existing observer if the value already has one.
  *
  * @param {*} value
+ * @param {Vue} [vm]
  * @return {Observer|undefined}
  * @static
  */
 
-Observer.create = function (value) {
+Observer.create = function (value, vm) {
+  var ob
   if (
     value &&
     value.hasOwnProperty('__ob__') &&
     value.__ob__ instanceof Observer
   ) {
-    return value.__ob__
-  } else if (_.isArray(value)) {
-    return new Observer(value, ARRAY)
+    ob = value.__ob__
   } else if (
-    _.isPlainObject(value) &&
-    !value._isVue // avoid Vue instance
+    (_.isArray(value) || _.isPlainObject(value)) &&
+    !Object.isFrozen(value) &&
+    !value._isVue
   ) {
-    return new Observer(value, OBJECT)
+    ob = new Observer(value)
+  } else if (process.env.NODE_ENV !== 'production') {
+    if (_.isObject(value) && !_.isArray(value) && !_.isPlainObject(value)) {
+      _.warn(
+        'Unobservable object found in data: ' +
+        Object.prototype.toString.call(value)
+      )
+    }
   }
-}
-
-/**
- * Set the target watcher that is currently being evaluated.
- *
- * @param {Watcher} watcher
- */
-
-Observer.setTarget = function (watcher) {
-  Dep.target = watcher
+  if (ob && vm) {
+    ob.addVm(vm)
+  }
+  return ob
 }
 
 // Instance methods
-
-var p = Observer.prototype
 
 /**
  * Walk through each property and convert them into
@@ -94,16 +82,11 @@ var p = Observer.prototype
  * @param {Object} obj
  */
 
-p.walk = function (obj) {
+Observer.prototype.walk = function (obj) {
   var keys = Object.keys(obj)
   var i = keys.length
-  var key, prefix
   while (i--) {
-    key = keys[i]
-    prefix = key.charCodeAt(0)
-    if (prefix !== 0x24 && prefix !== 0x5F) { // skip $ or _
-      this.convert(key, obj[key])
-    }
+    this.convert(keys[i], obj[keys[i]])
   }
 }
 
@@ -115,7 +98,7 @@ p.walk = function (obj) {
  * @return {Dep|undefined}
  */
 
-p.observe = function (val) {
+Observer.prototype.observe = function (val) {
   return Observer.create(val)
 }
 
@@ -125,10 +108,45 @@ p.observe = function (val) {
  * @param {Array} items
  */
 
-p.observeArray = function (items) {
+Observer.prototype.observeArray = function (items) {
   var i = items.length
   while (i--) {
-    this.observe(items[i])
+    var ob = this.observe(items[i])
+    if (ob) {
+      (ob.parents || (ob.parents = [])).push(this)
+    }
+  }
+}
+
+/**
+ * Remove self from the parent list of removed objects.
+ *
+ * @param {Array} items
+ */
+
+Observer.prototype.unobserveArray = function (items) {
+  var i = items.length
+  while (i--) {
+    var ob = items[i] && items[i].__ob__
+    if (ob) {
+      ob.parents.$remove(this)
+    }
+  }
+}
+
+/**
+ * Notify self dependency, and also parent Array dependency
+ * if any.
+ */
+
+Observer.prototype.notify = function () {
+  this.dep.notify()
+  var parents = this.parents
+  if (parents) {
+    var i = parents.length
+    while (i--) {
+      parents[i].notify()
+    }
   }
 }
 
@@ -140,52 +158,29 @@ p.observeArray = function (items) {
  * @param {*} val
  */
 
-p.convert = function (key, val) {
+Observer.prototype.convert = function (key, val) {
   var ob = this
   var childOb = ob.observe(val)
   var dep = new Dep()
-  if (childOb) {
-    childOb.deps.push(dep)
-  }
   Object.defineProperty(ob.value, key, {
     enumerable: true,
     configurable: true,
     get: function () {
-      if (ob.active) {
+      if (Dep.target) {
         dep.depend()
+        if (childOb) {
+          childOb.dep.depend()
+        }
       }
       return val
     },
     set: function (newVal) {
       if (newVal === val) return
-      // remove dep from old value
-      var oldChildOb = val && val.__ob__
-      if (oldChildOb) {
-        oldChildOb.deps.$remove(dep)
-      }
       val = newVal
-      // add dep to new value
-      var newChildOb = ob.observe(newVal)
-      if (newChildOb) {
-        newChildOb.deps.push(dep)
-      }
+      childOb = ob.observe(newVal)
       dep.notify()
     }
   })
-}
-
-/**
- * Notify change on all self deps on an observer.
- * This is called when a mutable value mutates. e.g.
- * when an Array's mutating methods are called, or an
- * Object's $add/$delete are called.
- */
-
-p.notify = function () {
-  var deps = this.deps
-  for (var i = 0, l = deps.length; i < l; i++) {
-    deps[i].notify()
-  }
 }
 
 /**
@@ -197,7 +192,7 @@ p.notify = function () {
  * @param {Vue} vm
  */
 
-p.addVm = function (vm) {
+Observer.prototype.addVm = function (vm) {
   (this.vms || (this.vms = [])).push(vm)
 }
 
@@ -208,7 +203,7 @@ p.addVm = function (vm) {
  * @param {Vue} vm
  */
 
-p.removeVm = function (vm) {
+Observer.prototype.removeVm = function (vm) {
   this.vms.$remove(vm)
 }
 

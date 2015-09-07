@@ -116,7 +116,7 @@ if (_.inBrowser && !_.isIE9) {
         expect(cb).toHaveBeenCalled()
       })
 
-      it('skip when no css transition is available', function () {
+      it('skip when css transition is not supported', function () {
         var e = _.transitionEndEvent
         _.transitionEndEvent = null
         el.__v_trans = new Transition(el, 'test', null, vm)
@@ -190,15 +190,18 @@ if (_.inBrowser && !_.isIE9) {
           expect(cb).toHaveBeenCalled()
           expect(hooks.afterEnter).toHaveBeenCalled()
           expect(el.classList.contains('test-no-trans-enter')).toBe(false)
-          transition.apply(el, -1, op, vm, cb)
-          expect(hooks.beforeLeave).toHaveBeenCalled()
-          expect(hooks.leave).toHaveBeenCalled()
+          // wait until transition.justEntered flag is off
           _.nextTick(function () {
-            expect(op.calls.count()).toBe(2)
-            expect(cb.calls.count()).toBe(2)
-            expect(hooks.afterLeave).toHaveBeenCalled()
-            expect(el.classList.contains('test-no-trans-leave')).toBe(false)
-            done()
+            transition.apply(el, -1, op, vm, cb)
+            expect(hooks.beforeLeave).toHaveBeenCalled()
+            expect(hooks.leave).toHaveBeenCalled()
+            _.nextTick(function () {
+              expect(op.calls.count()).toBe(2)
+              expect(cb.calls.count()).toBe(2)
+              expect(hooks.afterLeave).toHaveBeenCalled()
+              expect(el.classList.contains('test-no-trans-leave')).toBe(false)
+              done()
+            })
           })
         })
       })
@@ -336,6 +339,50 @@ if (_.inBrowser && !_.isIE9) {
           expect(cb).toHaveBeenCalled()
           expect(hooks.afterEnter).toHaveBeenCalled()
           done()
+        }
+      })
+
+      it('css + js hook with callback before transitionend', function (done) {
+        document.body.removeChild(el)
+        el.classList.add('test')
+
+        // enter hook that expects a second argument
+        // indicates the user wants to control when the
+        // transition ends.
+        var enterCalled = false
+        hooks.enter = function (el, enterDone) {
+          enterCalled = true
+          setTimeout(function () {
+            enterDone()
+            testDone()
+          }, 20)
+        }
+
+        el.__v_trans = new Transition(el, 'test', hooks, vm)
+        transition.apply(el, 1, function () {
+          document.body.appendChild(el)
+          op()
+        }, vm, cb)
+        expect(hooks.beforeEnter).toHaveBeenCalled()
+        expect(op).toHaveBeenCalled()
+        expect(cb).not.toHaveBeenCalled()
+        expect(enterCalled).toBe(true)
+        _.nextTick(function () {
+          expect(el.classList.contains('test-enter')).toBe(false)
+          expect(hooks.afterEnter).not.toHaveBeenCalled()
+          _.on(el, _.transitionEndEvent, function () {
+            // callback should have been called, but only once, by the js callback
+            expect(cb).toHaveBeenCalled()
+            expect(cb.calls.count()).toBe(1)
+            expect(hooks.afterEnter).toHaveBeenCalled()
+            done()
+          })
+        })
+
+        // this is called by the enter hook
+        function testDone () {
+          expect(cb).toHaveBeenCalled()
+          expect(hooks.afterEnter).toHaveBeenCalled()
         }
       })
 

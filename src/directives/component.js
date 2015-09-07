@@ -1,4 +1,5 @@
 var _ = require('../util')
+var config = require('../config')
 var templateParser = require('../parsers/template')
 
 module.exports = {
@@ -27,9 +28,9 @@ module.exports = {
       // cache object, with its constructor id as the key.
       this.keepAlive = this._checkParam('keep-alive') != null
       // wait for event before insertion
-      this.readyEvent = this._checkParam('wait-for')
+      this.waitForEvent = this._checkParam('wait-for')
       // check ref
-      this.refID = _.attr(this.el, 'ref')
+      this.refID = this._checkParam(config.prefix + 'ref')
       if (this.keepAlive) {
         this.cache = {}
       }
@@ -39,22 +40,22 @@ module.exports = {
         this.template = _.extractContent(this.el, true)
       }
       // component resolution related state
-      this._pendingCb =
-      this.ctorId =
-      this.Ctor = null
+      this.pendingComponentCb =
+      this.Component = null
+      // transition related state
+      this.pendingRemovals = 0
+      this.pendingRemovalCb = null
       // if static, build right now.
       if (!this._isDynamicLiteral) {
-        this.resolveCtor(this.expression, _.bind(this.initStatic, this))
+        this.resolveComponent(this.expression, _.bind(this.initStatic, this))
       } else {
         // check dynamic component params
         this.transMode = this._checkParam('transition-mode')
       }
     } else {
-      _.warn(
-        'Do not create a component that only contains ' +
-        'a single other component - they will be mounted to ' +
-        'the same element and cause conflict. Wrap it with ' +
-        'an outer element.'
+      process.env.NODE_ENV !== 'production' && _.warn(
+        'cannot mount component "' + this.expression + '" ' +
+        'on already mounted element: ' + this.el
       )
     }
   },
@@ -64,15 +65,23 @@ module.exports = {
    */
 
   initStatic: function () {
-    var child = this.build()
+    // wait-for
     var anchor = this.anchor
+    var options
+    var waitFor = this.waitForEvent
+    if (waitFor) {
+      options = {
+        created: function () {
+          this.$once(waitFor, function () {
+            this.$before(anchor)
+          })
+        }
+      }
+    }
+    var child = this.build(options)
     this.setCurrent(child)
-    if (!this.readyEvent) {
+    if (!this.waitForEvent) {
       child.$before(anchor)
-    } else {
-      child.$once(this.readyEvent, function () {
-        child.$before(anchor)
-      })
     }
   },
 
@@ -91,32 +100,42 @@ module.exports = {
    * specified transition mode. Accepts a few additional
    * arguments specifically for vue-router.
    *
+   * The callback is called when the full transition is
+   * finished.
+   *
    * @param {String} value
-   * @param {Object} data
-   * @param {Function} afterBuild
-   * @param {Function} afterTransition
+   * @param {Function} [cb]
    */
 
-  setComponent: function (value, data, afterBuild, afterTransition) {
+  setComponent: function (value, cb) {
     this.invalidatePending()
     if (!value) {
       // just remove current
       this.unbuild(true)
-      this.remove(this.childVM, afterTransition)
+      this.remove(this.childVM, cb)
       this.unsetCurrent()
     } else {
-      this.resolveCtor(value, _.bind(function () {
+      this.resolveComponent(value, _.bind(function () {
         this.unbuild(true)
-        var newComponent = this.build(data)
-        /* istanbul ignore if */
-        if (afterBuild) afterBuild(newComponent)
+        var options
         var self = this
-        if (this.readyEvent) {
-          newComponent.$once(this.readyEvent, function () {
-            self.transition(newComponent, afterTransition)
-          })
+        var waitFor = this.waitForEvent
+        if (waitFor) {
+          options = {
+            created: function () {
+              this.$once(waitFor, function () {
+                self.waitingFor = null
+                self.transition(this, cb)
+              })
+            }
+          }
+        }
+        var cached = this.getCached()
+        var newComponent = this.build(options)
+        if (!waitFor || cached) {
+          this.transition(newComponent, cb)
         } else {
-          this.transition(newComponent, afterTransition)
+          this.waitingFor = newComponent
         }
       }, this))
     }
@@ -127,14 +146,13 @@ module.exports = {
    * the child vm.
    */
 
-  resolveCtor: function (id, cb) {
+  resolveComponent: function (id, cb) {
     var self = this
-    this._pendingCb = _.cancellable(function (ctor) {
-      self.ctorId = id
-      self.Ctor = ctor
+    this.pendingComponentCb = _.cancellable(function (Component) {
+      self.Component = Component
       cb()
     })
-    this.vm._resolveComponent(id, this._pendingCb)
+    this.vm._resolveComponent(id, this.pendingComponentCb)
   },
 
   /**
@@ -144,9 +162,9 @@ module.exports = {
    */
 
   invalidatePending: function () {
-    if (this._pendingCb) {
-      this._pendingCb.cancel()
-      this._pendingCb = null
+    if (this.pendingComponentCb) {
+      this.pendingComponentCb.cancel()
+      this.pendingComponentCb = null
     }
   },
 
@@ -155,23 +173,19 @@ module.exports = {
    * If keep alive and has cached instance, insert that
    * instance; otherwise build a new one and cache it.
    *
-   * @param {Object} [data]
+   * @param {Object} [extraOptions]
    * @return {Vue} - the created instance
    */
 
-  build: function (data) {
-    if (this.keepAlive) {
-      var cached = this.cache[this.ctorId]
-      if (cached) {
-        return cached
-      }
+  build: function (extraOptions) {
+    var cached = this.getCached()
+    if (cached) {
+      return cached
     }
-    if (this.Ctor) {
-      var parent = this._host || this.vm
-      var el = templateParser.clone(this.el)
-      var child = parent.$addChild({
-        el: el,
-        data: data,
+    if (this.Component) {
+      // default options
+      var options = {
+        el: templateParser.clone(this.el),
         template: this.template,
         // if no inline-template, then the compiled
         // linker can be cached for better performance.
@@ -179,12 +193,28 @@ module.exports = {
         _asComponent: true,
         _isRouterView: this._isRouterView,
         _context: this.vm
-      }, this.Ctor)
+      }
+      // extra options
+      if (extraOptions) {
+        _.extend(options, extraOptions)
+      }
+      var parent = this._host || this.vm
+      var child = parent.$addChild(options, this.Component)
       if (this.keepAlive) {
-        this.cache[this.ctorId] = child
+        this.cache[this.Component.cid] = child
       }
       return child
     }
+  },
+
+  /**
+   * Try to get a cached instance of the current component.
+   *
+   * @return {Vue|undefined}
+   */
+
+  getCached: function () {
+    return this.keepAlive && this.cache[this.Component.cid]
   },
 
   /**
@@ -195,6 +225,10 @@ module.exports = {
    */
 
   unbuild: function (defer) {
+    if (this.waitingFor) {
+      this.waitingFor.$destroy()
+      this.waitingFor = null
+    }
     var child = this.childVM
     if (!child || this.keepAlive) {
       return
@@ -215,9 +249,20 @@ module.exports = {
   remove: function (child, cb) {
     var keepAlive = this.keepAlive
     if (child) {
+      // we may have a component switch when a previous
+      // component is still being transitioned out.
+      // we want to trigger only one lastest insertion cb
+      // when the existing transition finishes. (#1119)
+      this.pendingRemovals++
+      this.pendingRemovalCb = cb
+      var self = this
       child.$remove(function () {
+        self.pendingRemovals--
         if (!keepAlive) child._cleanup()
-        if (cb) cb()
+        if (!self.pendingRemovals && self.pendingRemovalCb) {
+          self.pendingRemovalCb()
+          self.pendingRemovalCb = null
+        }
       })
     } else if (cb) {
       cb()
@@ -235,7 +280,6 @@ module.exports = {
   transition: function (target, cb) {
     var self = this
     var current = this.childVM
-    this.unsetCurrent()
     this.setCurrent(target)
     switch (self.transMode) {
       case 'in-out':
@@ -245,9 +289,7 @@ module.exports = {
         break
       case 'out-in':
         self.remove(current, function () {
-          if (!target._isDestroyed) {
-            target.$before(self.anchor, cb)
-          }
+          target.$before(self.anchor, cb)
         })
         break
       default:
@@ -261,6 +303,7 @@ module.exports = {
    */
 
   setCurrent: function (child) {
+    this.unsetCurrent()
     this.childVM = child
     var refID = child._refID || this.refID
     if (refID) {

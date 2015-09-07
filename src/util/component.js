@@ -1,72 +1,4 @@
 var _ = require('./index')
-var config = require('../config')
-
-/**
- * Assert whether a prop is valid.
- *
- * @param {Object} prop
- * @param {*} value
- */
-
-exports.assertProp = function (prop, value) {
-  var options = prop.options
-  var type = options.type
-  var valid = true
-  var expectedType
-  if (type) {
-    if (type === String) {
-      expectedType = 'string'
-      valid = typeof value === expectedType
-    } else if (type === Number) {
-      expectedType = 'number'
-      valid = typeof value === 'number'
-    } else if (type === Boolean) {
-      expectedType = 'boolean'
-      valid = typeof value === 'boolean'
-    } else if (type === Function) {
-      expectedType = 'function'
-      valid = typeof value === 'function'
-    } else if (type === Object) {
-      expectedType = 'object'
-      valid = _.isPlainObject(value)
-    } else if (type === Array) {
-      expectedType = 'array'
-      valid = _.isArray(value)
-    } else {
-      valid = value instanceof type
-    }
-  }
-  if (!valid) {
-    _.warn(
-      'Invalid prop: type check failed for ' +
-      prop.path + '="' + prop.raw + '".' +
-      ' Expected ' + formatType(expectedType) +
-      ', got ' + formatValue(value) + '.'
-    )
-    return false
-  }
-  var validator = options.validator
-  if (validator) {
-    if (!validator.call(null, value)) {
-      _.warn(
-        'Invalid prop: custom validator check failed for ' +
-        prop.path + '="' + prop.raw + '"'
-      )
-      return false
-    }
-  }
-  return true
-}
-
-function formatType (val) {
-  return val
-    ? val.charAt(0).toUpperCase() + val.slice(1)
-    : 'custom type'
-}
-
-function formatValue (val) {
-  return Object.prototype.toString.call(val).slice(8, -1)
-}
 
 /**
  * Check if an element is a component, if yes return its
@@ -98,25 +30,95 @@ exports.checkComponent = function (el, options) {
 }
 
 /**
- * Create an "anchor" for performing dom insertion/removals.
- * This is used in a number of scenarios:
- * - block instance
- * - v-html
- * - v-if
- * - component
- * - repeat
+ * Set a prop's initial value on a vm and its data object.
+ * The vm may have inherit:true so we need to make sure
+ * we don't accidentally overwrite parent value.
  *
- * @param {String} content
- * @param {Boolean} persist - IE trashes empty textNodes on
- *                            cloneNode(true), so in certain
- *                            cases the anchor needs to be
- *                            non-empty to be persisted in
- *                            templates.
- * @return {Comment|Text}
+ * @param {Vue} vm
+ * @param {Object} prop
+ * @param {*} value
  */
 
-exports.createAnchor = function (content, persist) {
-  return config.debug
-    ? document.createComment(content)
-    : document.createTextNode(persist ? ' ' : '')
+exports.initProp = function (vm, prop, value) {
+  if (exports.assertProp(prop, value)) {
+    var key = prop.path
+    if (key in vm) {
+      _.define(vm, key, value, true)
+    } else {
+      vm[key] = value
+    }
+    vm._data[key] = value
+  }
+}
+
+/**
+ * Assert whether a prop is valid.
+ *
+ * @param {Object} prop
+ * @param {*} value
+ */
+
+exports.assertProp = function (prop, value) {
+  // if a prop is not provided and is not required,
+  // skip the check.
+  if (prop.raw === null && !prop.required) {
+    return true
+  }
+  var options = prop.options
+  var type = options.type
+  var valid = true
+  var expectedType
+  if (type) {
+    if (type === String) {
+      expectedType = 'string'
+      valid = typeof value === expectedType
+    } else if (type === Number) {
+      expectedType = 'number'
+      valid = typeof value === 'number'
+    } else if (type === Boolean) {
+      expectedType = 'boolean'
+      valid = typeof value === 'boolean'
+    } else if (type === Function) {
+      expectedType = 'function'
+      valid = typeof value === 'function'
+    } else if (type === Object) {
+      expectedType = 'object'
+      valid = _.isPlainObject(value)
+    } else if (type === Array) {
+      expectedType = 'array'
+      valid = _.isArray(value)
+    } else {
+      valid = value instanceof type
+    }
+  }
+  if (!valid) {
+    process.env.NODE_ENV !== 'production' && _.warn(
+      'Invalid prop: type check failed for ' +
+      prop.path + '="' + prop.raw + '".' +
+      ' Expected ' + formatType(expectedType) +
+      ', got ' + formatValue(value) + '.'
+    )
+    return false
+  }
+  var validator = options.validator
+  if (validator) {
+    if (!validator.call(null, value)) {
+      process.env.NODE_ENV !== 'production' && _.warn(
+        'Invalid prop: custom validator check failed for ' +
+        prop.path + '="' + prop.raw + '"'
+      )
+      return false
+    }
+  }
+  return true
+}
+
+function formatType (val) {
+  return val
+    ? val.charAt(0).toUpperCase() + val.slice(1)
+    : 'custom type'
+}
+
+function formatValue (val) {
+  return Object.prototype.toString.call(val).slice(8, -1)
 }

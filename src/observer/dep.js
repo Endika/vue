@@ -16,15 +16,13 @@ function Dep () {
 // watcher being evaluated at any time.
 Dep.target = null
 
-var p = Dep.prototype
-
 /**
  * Add a directive subscriber.
  *
  * @param {Directive} sub
  */
 
-p.addSub = function (sub) {
+Dep.prototype.addSub = function (sub) {
   this.subs.push(sub)
 }
 
@@ -34,7 +32,7 @@ p.addSub = function (sub) {
  * @param {Directive} sub
  */
 
-p.removeSub = function (sub) {
+Dep.prototype.removeSub = function (sub) {
   this.subs.$remove(sub)
 }
 
@@ -42,17 +40,15 @@ p.removeSub = function (sub) {
  * Add self as a dependency to the target watcher.
  */
 
-p.depend = function () {
-  if (Dep.target) {
-    Dep.target.addDep(this)
-  }
+Dep.prototype.depend = function () {
+  Dep.target.addDep(this)
 }
 
 /**
  * Notify all subscribers of a new value.
  */
 
-p.notify = function () {
+Dep.prototype.notify = function () {
   // stablize the subscriber list first
   var subs = _.toArray(this.subs)
   for (var i = 0, l = subs.length; i < l; i++) {

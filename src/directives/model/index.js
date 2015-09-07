@@ -29,7 +29,7 @@ module.exports = {
     // friendly warning...
     this.checkFilters()
     if (this.hasRead && !this.hasWrite) {
-      _.warn(
+      process.env.NODE_ENV !== 'production' && _.warn(
         'It seems you are using a read-only filter with ' +
         'v-model. You might want to use a two-way filter ' +
         'to ensure correct behavior.'
@@ -45,12 +45,15 @@ module.exports = {
     } else if (tag === 'TEXTAREA') {
       handler = handlers.text
     } else {
-      _.warn('v-model does not support element type: ' + tag)
+      process.env.NODE_ENV !== 'production' && _.warn(
+        'v-model does not support element type: ' + tag
+      )
       return
     }
+    el.__v_model = this
     handler.bind.call(this)
     this.update = handler.update
-    this.unbind = handler.unbind
+    this._unbind = handler.unbind
   },
 
   /**
@@ -70,5 +73,10 @@ module.exports = {
         this.hasWrite = true
       }
     }
+  },
+
+  unbind: function () {
+    this.el.__v_model = null
+    this._unbind && this._unbind()
   }
 }

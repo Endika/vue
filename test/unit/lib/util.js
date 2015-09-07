@@ -11,7 +11,15 @@ scope.hasWarned = function (_, msg) {
     }
   }
 
+  console.warn('[test] "' + msg + '" was never warned.')
+
   function containsMsg (arg) {
     return arg.indexOf(msg) > -1
+  }
+}
+
+scope.process = {
+  env: {
+    NODE_ENV: 'development'
   }
 }

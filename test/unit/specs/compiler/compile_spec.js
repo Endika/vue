@@ -148,6 +148,7 @@ if (_.inBrowser) {
       var bindingModes = Vue.config._propBindingModes
       var props = [
         'a',
+        'empty',
         'data-some-attr',
         'some-other-attr',
         'multiple-attrs',
@@ -167,12 +168,27 @@ if (_.inBrowser) {
         {
           name: 'boolean-absent',
           type: Boolean
+        },
+        {
+          name: 'factory',
+          type: Object,
+          default: function () {
+            return {
+              a: 123
+            }
+          }
+        },
+        'withDataPrefix',
+        {
+          name: 'forceTwoWay',
+          twoWay: true
         }
       ].map(function (p) {
         return typeof p === 'string' ? { name: p } : p
       })
       var def = Vue.options.directives._prop
       el.setAttribute('a', '1')
+      el.setAttribute('empty', '')
       el.setAttribute('data-some-attr', '{{a}}')
       el.setAttribute('some-other-attr', '2')
       el.setAttribute('multiple-attrs', 'a {{b}} c')
@@ -182,9 +198,11 @@ if (_.inBrowser) {
       el.setAttribute('camel-case', 'hi')
       el.setAttribute('boolean-literal', '{{true}}')
       el.setAttribute('boolean', '')
+      el.setAttribute('data-with-data-prefix', '1')
+      el.setAttribute('force-two-way', '{{a}}')
       compiler.compileAndLinkProps(vm, el, props)
       // should skip literals and one-time bindings
-      expect(vm._bindDir.calls.count()).toBe(4)
+      expect(vm._bindDir.calls.count()).toBe(5)
       // data-some-attr
       var args = vm._bindDir.calls.argsFor(0)
       expect(args[0]).toBe('prop')
@@ -217,21 +235,33 @@ if (_.inBrowser) {
       expect(args[2].parentPath).toBe('this._applyFilters(a,null,[{"name":"filter"}],false)')
       expect(args[2].mode).toBe(bindingModes.ONE_WAY)
       expect(args[3]).toBe(def)
+      // warn when expecting two-way binding but not getting it
+      expect(hasWarned(_, 'expects a two-way binding type')).toBe(true)
       // literal and one time should've been set on the _data
       // and numbers should be casted
-      expect(Object.keys(vm._data).length).toBe(8)
+      expect(Object.keys(vm._data).length).toBe(11)
       expect(vm.a).toBe(1)
       expect(vm._data.a).toBe(1)
+      expect(vm.empty).toBe('')
+      expect(vm._data.empty).toBe('')
       expect(vm.someOtherAttr).toBe(2)
       expect(vm._data.someOtherAttr).toBe(2)
       expect(vm.onetime).toBe('from parent: a')
       expect(vm._data.onetime).toBe('from parent: a')
       expect(vm.booleanLiteral).toBe('from parent: true')
       expect(vm._data.booleanLiteral).toBe('from parent: true')
+      expect(vm.camelCase).toBe('hi')
       expect(vm._data.camelCase).toBe('hi')
+      expect(vm.defaultValue).toBe(123)
       expect(vm._data.defaultValue).toBe(123)
+      expect(vm.boolean).toBe(true)
       expect(vm._data.boolean).toBe(true)
+      expect(vm.booleanAbsent).toBe(false)
       expect(vm._data.booleanAbsent).toBe(false)
+      expect(vm.factory).toBe(vm._data.factory)
+      expect(vm.factory.a).toBe(123)
+      expect(vm.withDataPrefix).toBe(1)
+      expect(vm._data.withDataPrefix).toBe(1)
     })
 
     it('props on root instance', function () {
