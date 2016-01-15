@@ -1,12 +1,31 @@
-var _ = require('../../../../src/util')
+var _ = require('src/util')
 
 describe('Util - Language Enhancement', function () {
 
+  it('hasOwn', function () {
+    var obj1 = { a: 1 }
+    expect(_.hasOwn(obj1, 'a')).toBe(true)
+    var obj2 = Object.create(null)
+    obj2.a = 2
+    expect(_.hasOwn(obj2, 'a')).toBe(true)
+  })
+
+  it('isLiteral', function () {
+    expect(_.isLiteral('123')).toBe(true)
+    expect(_.isLiteral('12.3')).toBe(true)
+    expect(_.isLiteral('true')).toBe(true)
+    expect(_.isLiteral(' false ')).toBe(true)
+    expect(_.isLiteral('"hi"')).toBe(true)
+    expect(_.isLiteral(" 'whatt' ")).toBe(true)
+    expect(_.isLiteral('a.b.c')).toBe(false)
+    expect(_.isLiteral('1 + 1')).toBe(false)
+  })
+
   it('toString', function () {
-    expect(_.toString('hi')).toBe('hi')
-    expect(_.toString(1.234)).toBe('1.234')
-    expect(_.toString(null)).toBe('')
-    expect(_.toString(undefined)).toBe('')
+    expect(_._toString('hi')).toBe('hi')
+    expect(_._toString(1.234)).toBe('1.234')
+    expect(_._toString(null)).toBe('')
+    expect(_._toString(undefined)).toBe('')
   })
 
   it('toNumber', function () {
@@ -21,7 +40,7 @@ describe('Util - Language Enhancement', function () {
   it('strip quotes', function () {
     expect(_.stripQuotes('"123"')).toBe('123')
     expect(_.stripQuotes("'fff'")).toBe('fff')
-    expect(_.stripQuotes("'fff")).toBe(false)
+    expect(_.stripQuotes("'fff")).toBe("'fff")
   })
 
   it('camelize', function () {
@@ -98,9 +117,7 @@ describe('Util - Language Enhancement', function () {
     expect(_.isPlainObject('hi')).toBeFalsy()
     expect(_.isPlainObject(undefined)).toBeFalsy()
     expect(_.isPlainObject(function () {})).toBe(false)
-    if (_.inBrowser) {
-      expect(_.isPlainObject(window)).toBe(false)
-    }
+    expect(_.isPlainObject(window)).toBe(false)
   })
 
   it('isArray', function () {
@@ -111,12 +128,12 @@ describe('Util - Language Enhancement', function () {
 
   it('define', function () {
     var obj = {}
-    _.define(obj, 'test', 123)
+    _.def(obj, 'test', 123)
     expect(obj.test).toBe(123)
     var desc = Object.getOwnPropertyDescriptor(obj, 'test')
     expect(desc.enumerable).toBe(false)
 
-    _.define(obj, 'test2', 123, true)
+    _.def(obj, 'test2', 123, true)
     expect(obj.test2).toBe(123)
     desc = Object.getOwnPropertyDescriptor(obj, 'test2')
     expect(desc.enumerable).toBe(true)

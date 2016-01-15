@@ -4,23 +4,34 @@ Hi! I’m really excited that you are interested in contributing to Vue.js. Befo
 
 ## Issue Reporting Guidelines
 
-- The issue list of this repo is **exclusively** for bug reports and feature requests. For simple questions, please use either [Gitter](https://gitter.im/yyx990803/vue) or [vuejs/Discussion](https://github.com/vuejs/Discussion/issues).
+- The issue list of this repo is **exclusively** for bug reports and feature requests. For simple questions, please use either [Gitter](https://gitter.im/vuejs/vue) or [the official forum](http://forum.vuejs.org/).
+
 - Try to search for your issue, it may have already been answered or even fixed in the development branch.
+
 - Check if the issue is reproducible with the latest stable version of Vue. If you are using a pre-release, please indicate the specific version you are using.
+
 - It is **required** that you clearly describe the steps necessary to reproduce the issue you are running into. Issues with no clear repro steps will not be triaged. If an issue labeled "need repro" receives no further input from the issue author for more than 5 days, it will be closed.
+
 - It is recommended that you make a JSFiddle to demonstrate your issue. You could start with [this template](http://jsfiddle.net/5sH6A/) that already includes the latest version of Vue.
+
 - If your issue is resolved but still open, don’t hesitate to close it. In case you found a solution by yourself, it could be helpful to explain how you fixed it.
 
 ## Pull Request Guidelines
 
 - Checkout a topic branch from `dev` and merge back against `dev`.
+
 - Work in the `src` folder and **DO NOT** checkin `dist` in the commits.
+
 - Squash the commit if there are too many small ones.
+
 - Follow the [code style](#code-style).
-- Make sure the default grunt task passes. (see [development setup](#development-setup))
+
+- Make sure `npm test` passes. (see [development setup](#development-setup))
+
 - If adding new feature:
     - Add accompanying test case.
     - Provide convincing reason to add this feature. Ideally you should open a suggestion issue first and have it greenlighted before working on it.
+
 - If fixing a bug:
     - Provide detailed description of the bug in the PR. Live demo preferred.
     - Add appropriate test coverage if applicable.
@@ -28,14 +39,17 @@ Hi! I’m really excited that you are interested in contributing to Vue.js. Befo
 ## Code Style
 
 - [No semicolons unless necessary](http://inimino.org/~inimino/blog/javascript_semicolons).
+
 - Follow JSDoc.
+
 - 2 spaces indentation.
+
 - multiple var declarations.
-- align equal signs where appropriate.
-- Return early.
-- 1 space after `function`
+
+- 1 space after `function` and function names.
+
 - 1 space between arguments, but not between parentheses.
-- When in doubt, read the source code.
+
 - Break long ternary conditionals like this:
 
   ``` js
@@ -44,16 +58,19 @@ Hi! I’m really excited that you are interested in contributing to Vue.js. Befo
     : 'nope'
   ```
 
+- When in doubt, read the source code.
+
 ## Development Setup
 
-You will need [Node.js](http://nodejs.org) & [Grunt](http://gruntjs.com).
+You will need [Node.js](http://nodejs.org).
 
 ``` bash
-# npm install -g grunt-cli
 $ npm install
+# optional: install pre-commit lint hook
+$ npm run install-hook
 ```
 
-To watch and auto-build `dist/vue.js` during development:
+Dev mode: watch and auto-build `dist/vue.js` and serve unit tests at `http://localhost:8080` during development:
 
 ``` bash
 $ npm run dev
@@ -62,23 +79,21 @@ $ npm run dev
 To lint:
 
 ``` bash
-$ grunt eslint
+$ npm run lint
 ```
 
 To build:
 
 ``` bash
-$ grunt build
+$ npm run build
 ```
 
-To test:
+Run default test suite:
 
 ``` bash
-$ grunt test
+$ npm test
 ```
 
-The default task (by simply running `grunt`) will do the following: lint -> build -> unit tests -> e2e tests. It is required to have this pass successfully for a PR to be considered.
+The default test script will do the following: lint -> unit tests with coverage -> build -> e2e tests. **Please make sure to have this pass successfully before submitting a PR.**
 
-The unit tests are written with Jasmine and run with Karma. The e2e tests are written for and run with CasperJS.
-
-Note that the unit tests will automatically be run in Chrome, Firefox and Safari. If you are not on a Mac, or don't have one of the browsers installed on your system, you can modify the [karma config in gruntfile.js](https://github.com/yyx990803/vue/blob/dev/gruntfile.js#L38) to only run Karma tests in browsers that are available on your system. Just make sure don’t check in the gruntfile changes for the commit.
+The unit tests are written with [Jasmine](http://jasmine.github.io/2.3/introduction.html) and run with [Karma](http://karma-runner.github.io/0.13/index.html). The e2e tests are written for and run with [CasperJS](http://casperjs.org/).

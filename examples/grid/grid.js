@@ -2,24 +2,25 @@
 Vue.component('demo-grid', {
   template: '#grid-template',
   replace: true,
-  props: ['data', 'columns', 'filter-key'],
+  props: {
+    data: Array,
+    columns: Array,
+    filterKey: String
+  },
   data: function () {
-    var reversed = {}
+    var sortOrders = {}
     this.columns.forEach(function (key) {
-      reversed[key] = false
+      sortOrders[key] = 1
     })
     return {
-      data: null,
-      columns: null,
       sortKey: '',
-      filterKey: '',
-      reversed: reversed
+      sortOrders: sortOrders
     }
   },
   methods: {
     sortBy: function (key) {
       this.sortKey = key
-      this.reversed[key] = !this.reversed[key]
+      this.sortOrders[key] = this.sortOrders[key] * -1
     }
   }
 })
@@ -33,7 +34,7 @@ var demo = new Vue({
     gridData: [
       { name: 'Chuck Norris', power: Infinity },
       { name: 'Bruce Lee', power: 9000 },
-      { name: 'Jacky Chang', power: 7000 },
+      { name: 'Jackie Chan', power: 7000 },
       { name: 'Jet Li', power: 8000 }
     ]
   }

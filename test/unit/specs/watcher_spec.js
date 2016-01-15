@@ -1,6 +1,6 @@
-var Vue = require('../../../src/vue')
+var Vue = require('src')
 var nextTick = Vue.nextTick
-var Watcher = require('../../../src/watcher')
+var Watcher = require('src/watcher')
 var _ = Vue.util
 var config = Vue.config
 
@@ -22,7 +22,7 @@ describe('Watcher', function () {
       }
     })
     spy = jasmine.createSpy('watcher')
-    spyOn(_, 'warn')
+    spyWarns()
   })
 
   it('simple path', function (done) {
@@ -113,7 +113,7 @@ describe('Watcher', function () {
   })
 
   it('meta properties', function (done) {
-    vm._defineMeta('$index', 1)
+    _.defineReactive(vm, '$index', 1)
     var watcher = new Watcher(vm, '$index + 1', spy)
     expect(watcher.value).toBe(2)
     vm.$index = 2
@@ -123,30 +123,22 @@ describe('Watcher', function () {
     })
   })
 
-  it('non-existent path, $add later', function (done) {
+  it('non-existent path, set later', function (done) {
     var watcher = new Watcher(vm, 'd.e', spy)
     var watcher2 = new Watcher(vm, 'b.e', spy)
     expect(watcher.value).toBeUndefined()
     expect(watcher2.value).toBeUndefined()
-    // check $add affecting children
-    var child = vm.$addChild({
-      inherit: true
-    })
-    var watcher3 = new Watcher(child, 'd.e', spy)
-    var watcher4 = new Watcher(child, 'b.e', spy)
     // check $add should not affect isolated children
-    var child2 = vm.$addChild()
-    var watcher5 = new Watcher(child2, 'd.e', spy)
-    expect(watcher5.value).toBeUndefined()
-    vm.$add('d', { e: 123 })
-    vm.b.$add('e', 234)
+    var child2 = new Vue({ parent: vm })
+    var watcher3 = new Watcher(child2, 'd.e', spy)
+    expect(watcher3.value).toBeUndefined()
+    vm.$set('d', { e: 123 })
+    _.set(vm.b, 'e', 234)
     nextTick(function () {
       expect(watcher.value).toBe(123)
       expect(watcher2.value).toBe(234)
-      expect(watcher3.value).toBe(123)
-      expect(watcher4.value).toBe(234)
-      expect(watcher5.value).toBeUndefined()
-      expect(spy.calls.count()).toBe(4)
+      expect(watcher3.value).toBeUndefined()
+      expect(spy.calls.count()).toBe(2)
       expect(spy).toHaveBeenCalledWith(123, undefined)
       expect(spy).toHaveBeenCalledWith(234, undefined)
       done()
@@ -211,24 +203,6 @@ describe('Watcher', function () {
     })
   })
 
-  it('watching parent scope properties', function (done) {
-    var child = vm.$addChild({
-      inherit: true
-    })
-    var spy2 = jasmine.createSpy('watch')
-    var watcher1 = new Watcher(child, '$data', spy)
-    var watcher2 = new Watcher(child, 'a', spy2)
-    vm.a = 123
-    nextTick(function () {
-      // $data should only be called on self data change
-      expect(watcher1.value).toBe(child.$data)
-      expect(spy).not.toHaveBeenCalled()
-      expect(watcher2.value).toBe(123)
-      expect(spy2).toHaveBeenCalledWith(123, 1)
-      done()
-    })
-  })
-
   it('filters', function (done) {
     vm.$options.filters.test = function (val, multi) {
       return val * multi
@@ -280,7 +254,9 @@ describe('Watcher', function () {
   })
 
   it('set non-existent values', function (done) {
-    var watcher = new Watcher(vm, 'd.e.f', spy)
+    var watcher = new Watcher(vm, 'd.e.f', spy, {
+      twoWay: true
+    })
     expect(watcher.value).toBeUndefined()
     watcher.set(123)
     nextTick(function () {
@@ -309,6 +285,20 @@ describe('Watcher', function () {
           expect(spy.calls.count()).toBe(3)
           done()
         })
+      })
+    })
+  })
+
+  it('fire change for prop addition/deletion in non-deep mode', function (done) {
+    new Watcher(vm, 'b', spy)
+    Vue.set(vm.b, 'e', 123)
+    nextTick(function () {
+      expect(spy).toHaveBeenCalledWith(vm.b, vm.b)
+      expect(spy.calls.count()).toBe(1)
+      Vue.delete(vm.b, 'e')
+      nextTick(function () {
+        expect(spy.calls.count()).toBe(2)
+        done()
       })
     })
   })
@@ -376,13 +366,13 @@ describe('Watcher', function () {
 
   it('warn getter errors', function () {
     new Watcher(vm, 'd.e + c', spy)
-    expect(hasWarned(_, 'Error when evaluating expression')).toBe(true)
+    expect(hasWarned('Error when evaluating expression')).toBe(true)
   })
 
   it('warn setter errors', function () {
     var watcher = new Watcher(vm, 'a + b', spy)
     watcher.set(123)
-    expect(hasWarned(_, 'Error when evaluating setter')).toBe(true)
+    expect(hasWarned('Error when evaluating setter')).toBe(true)
   })
 
 })

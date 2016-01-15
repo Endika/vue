@@ -1,8 +1,12 @@
-var Vue = require('../../../../src/vue')
-var _ = require('../../../../src/util')
-var config = require('../../../../src/config')
+var Vue = require('src')
+var _ = require('src/util')
+var config = require('src/config')
 
 describe('Global API', function () {
+
+  beforeEach(function () {
+    spyWarns()
+  })
 
   it('exposed utilities', function () {
     expect(Vue.util).toBe(_)
@@ -39,6 +43,15 @@ describe('Global API', function () {
     expect(t2.$options.b).toBe(2)
   })
 
+  it('extend warn invalid names', function () {
+    Vue.extend({ name: '123' })
+    expect(hasWarned('Invalid component name: 123')).toBe(true)
+    Vue.extend({ name: '_fesf' })
+    expect(hasWarned('Invalid component name: _fesf')).toBe(true)
+    Vue.extend({ name: 'Some App' })
+    expect(hasWarned('Invalid component name: Some App')).toBe(true)
+  })
+
   it('use', function () {
     var def = {}
     var options = {}
@@ -55,6 +68,21 @@ describe('Global API', function () {
     Vue.use(pluginStub.install, options)
     expect(Vue.options.directives['plugin-test']).toBe(def)
     delete Vue.options.directives['plugin-test']
+  })
+
+  it('global mixin', function () {
+    var options = Vue.options
+    var spy = jasmine.createSpy('global mixin')
+    Vue.mixin({
+      created: function () {
+        spy(this.$options.myOption)
+      }
+    })
+    new Vue({
+      myOption: 'hello'
+    })
+    expect(spy).toHaveBeenCalledWith('hello')
+    Vue.options = options
   })
 
   describe('Asset registration', function () {

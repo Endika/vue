@@ -1,13 +1,40 @@
-var glob = require('grunt/node_modules/glob')
-var specs = glob.sync('test/unit/specs/**/*.js').map(function (f) {
-  return './' + f
-})
+var path = require('path')
+var webpack = require('webpack')
 
 module.exports = {
-  entry: specs,
+  entry: './test/unit/specs/index.js',
   output: {
-    path: './test/unit',
+    path: path.resolve(__dirname, '../test/unit'),
     filename: 'specs.js'
+  },
+  resolve: {
+    alias: {
+      src: path.resolve(__dirname, '../src')
+    }
+  },
+  module: {
+    loaders: [
+      {
+        test: /\.js$/,
+        loader: 'babel',
+        exclude: /test\/unit|node_modules/
+      }
+    ]
+  },
+  babel: {
+    loose: 'all',
+    optional: ['runtime']
+  },
+  plugins: [
+    new webpack.DefinePlugin({
+      'process.env': {
+        NODE_ENV: '"development"'
+      }
+    })
+  ],
+  devServer: {
+    contentBase: './test/unit',
+    noInfo: true
   },
   devtool: '#source-map'
 }

@@ -1,12 +1,12 @@
-var Vue = require('../../../../src/vue')
-var _ = require('../../../../src/util')
+var Vue = require('src')
+var _ = require('src/util')
 var nextTick = _.nextTick
 
 describe('Data API', function () {
 
   var vm
   beforeEach(function () {
-    spyOn(_, 'warn')
+    spyWarns()
     vm = new Vue({
       data: {
         a: 1,
@@ -17,6 +17,11 @@ describe('Data API', function () {
       filters: {
         double: function (v) {
           return v * 2
+        }
+      },
+      computed: {
+        d: function () {
+          return this.a + 1
         }
       }
     })
@@ -29,7 +34,7 @@ describe('Data API', function () {
     expect(vm.$get('c')).toBeUndefined()
     // invalid, should warn
     vm.$get('a(')
-    expect(hasWarned(_, 'Invalid expression')).toBe(true)
+    expect(hasWarned('Invalid expression')).toBe(true)
   })
 
   it('$set', function () {
@@ -41,45 +46,19 @@ describe('Data API', function () {
     vm.$set('c.d', 2)
     expect(vm.c.d).toBe(2)
     // warn against setting unexisting
-    expect(hasWarned(_, 'Consider pre-initializing')).toBe(true)
+    expect(hasWarned('Consider pre-initializing')).toBe(true)
   })
 
   it('$set invalid', function () {
-    // invalid, should throw
-    if (leftHandThrows()) {
-      // if creating a function with invalid left hand
-      // expression throws, the exp parser will catch the
-      // error and warn.
-      vm.$set('c + d', 1)
-      expect(hasWarned(_, 'Invalid setter function body')).toBe(true)
-    } else {
-      // otherwise it will throw when calling the setter.
-      expect(function () {
-        try {
-          vm.$set('c + d', 1)
-        } catch (e) {
-          return true
-        }
-      }()).toBe(true)
-    }
-  })
-
-  it('$add', function () {
-    vm._digest = jasmine.createSpy()
-    vm.$add('c', 1)
-    expect(vm.c).toBe(1)
-    expect(vm._data.c).toBe(1)
-    expect(vm._digest).toHaveBeenCalled()
-    // reserved key should not be proxied
-    vm.$add('_c', 1)
-    expect(vm._c).toBeUndefined()
+    vm.$set('c + d', 1)
+    expect(hasWarned('Invalid setter expression')).toBe(true)
   })
 
   it('$delete', function () {
     vm._digest = jasmine.createSpy()
     vm.$delete('a')
-    expect(vm.hasOwnProperty('a')).toBe(false)
-    expect(vm._data.hasOwnProperty('a')).toBe(false)
+    expect(_.hasOwn(vm, 'a')).toBe(false)
+    expect(_.hasOwn(vm._data, 'a')).toBe(false)
     expect(vm._digest).toHaveBeenCalled()
     // reserved key should not be deleted
     vm.$delete('_data')
@@ -143,6 +122,16 @@ describe('Data API', function () {
     })
   })
 
+  it('$watch with filters', function (done) {
+    var spy = jasmine.createSpy()
+    vm.$watch('a | double', spy)
+    vm.a = 2
+    nextTick(function () {
+      expect(spy).toHaveBeenCalledWith(4, 2)
+      done()
+    })
+  })
+
   it('$eval', function () {
     expect(vm.$eval('a')).toBe(1)
     expect(vm.$eval('b.c')).toBe(2)
@@ -151,6 +140,7 @@ describe('Data API', function () {
 
   it('$interpolate', function () {
     expect(vm.$interpolate('abc')).toBe('abc')
+    expect(vm.$interpolate('{{a}}')).toBe('1')
     expect(vm.$interpolate('{{a}} and {{a + b.c | double}}')).toBe('1 and 6')
   })
 
@@ -161,6 +151,7 @@ describe('Data API', function () {
       console.log = function (val) {
         expect(val.a).toBe(1)
         expect(val.b.c).toBe(2)
+        expect(val.d).toBe(2)
         spy()
       }
       vm.$log()
@@ -174,18 +165,4 @@ describe('Data API', function () {
       console.log = oldLog
     })
   }
-
 })
-
-/**
- * check if creating a new Function with invalid left-hand
- * assignment would throw
- */
-
-function leftHandThrows () {
-  try {
-    new Function('a + b = 1')
-  } catch (e) {
-    return true
-  }
-}

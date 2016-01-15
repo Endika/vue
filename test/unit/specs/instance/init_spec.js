@@ -1,4 +1,5 @@
-var init = require('../../../../src/instance/init')._init
+var Vue = require('src')
+var init = Vue.prototype._init
 
 describe('Instance Init', function () {
 
@@ -6,9 +7,10 @@ describe('Instance Init', function () {
     constructor: {
       options: { a: 1, b: 2 }
     },
+    _updateRef: jasmine.createSpy(),
     _initEvents: jasmine.createSpy(),
     _callHook: jasmine.createSpy(),
-    _initScope: jasmine.createSpy(),
+    _initState: jasmine.createSpy(),
     $mount: jasmine.createSpy()
   }
 
@@ -22,7 +24,8 @@ describe('Instance Init', function () {
   it('should setup properties', function () {
     expect(stub.$el).toBe(null)
     expect(stub.$root).toBe(stub)
-    expect(stub.$).toBeTruthy()
+    expect(stub.$refs).toBeTruthy()
+    expect(stub.$els).toBeTruthy()
     expect(stub._watchers).toBeTruthy()
     expect(stub._directives).toBeTruthy()
     expect(stub._events).toBeTruthy()
@@ -36,7 +39,8 @@ describe('Instance Init', function () {
 
   it('should call other init methods', function () {
     expect(stub._initEvents).toHaveBeenCalled()
-    expect(stub._initScope).toHaveBeenCalled()
+    expect(stub._initState).toHaveBeenCalled()
+    expect(stub._updateRef).toHaveBeenCalled()
   })
 
   it('should call created hook', function () {

@@ -1,4 +1,4 @@
-var filters = require('../../../../src/filters')
+var filters = require('src/filters')
 
 describe('Filters', function () {
 
@@ -80,24 +80,6 @@ describe('Filters', function () {
     expect(filter(-1500.4343434)).toBe('$-1,500.43')
   })
 
-  it('key', function () {
-    var filter = filters.key
-    expect(filter(null)).toBeUndefined()
-    var spy = jasmine.createSpy('filter:key')
-    var handler = filter(spy, 'enter')
-    handler({ keyCode: 0 })
-    expect(spy).not.toHaveBeenCalled()
-    handler({ keyCode: 13 })
-    expect(spy).toHaveBeenCalled()
-    // direct keycode
-    spy = jasmine.createSpy('filter:key')
-    handler = filter(spy, 13)
-    handler({ keyCode: 0 })
-    expect(spy).not.toHaveBeenCalled()
-    handler({ keyCode: 13 })
-    expect(spy).toHaveBeenCalled()
-  })
-
   it('debounce', function (done) {
     var filter = filters.debounce
     expect(filter(null)).toBeUndefined()
@@ -121,6 +103,26 @@ describe('Filters', function () {
       expect(spy2.calls.count()).toBe(1)
       done()
     }, 500)
+  })
+
+  it('limitBy', function () {
+    var filter = filters.limitBy
+    var arr = [1, 2, 3]
+    var res = filter(arr, false)
+    expect(res).toBe(arr)
+    res = filter(arr, 1)
+    assertArray(res, [1])
+    res = filter(arr, 10)
+    assertArray(res, [1, 2, 3])
+    res = filter(arr, -1)
+    assertArray(res, [1, 2])
+    // with offsets, note offsets are 0 bound (as expected)
+    res = filter(arr, 1, 1)
+    assertArray(res, [2])
+    res = filter(arr, 2, 1)
+    assertArray(res, [2, 3])
+    res = filter(arr, 1, 2)
+    assertArray(res, [3])
   })
 
   it('filterBy', function () {
@@ -169,6 +171,8 @@ describe('Filters', function () {
     ]
     // multiple string keys
     var res
+    res = filter(arr, '', 'in', 'firstname', 'lastname')
+    assertArray(res, [arr[0], arr[1], arr[2]])
     res = filter(arr, 'A', 'in', 'firstname', 'lastname')
     assertArray(res, [arr[0], arr[2]])
     // array of keys
@@ -193,13 +197,10 @@ describe('Filters', function () {
     res = filter(arr, 'a.b')
     assertArray(res, [arr[0], arr[2], arr[1]])
     // reverse key
-    res = filter(arr, 'a.b', true)
+    res = filter(arr, 'a.b', -1)
     assertArray(res, [arr[1], arr[2], arr[0]])
-    // literal args
-    res = filter(arr, 'c', '-1')
-    assertArray(res, [arr[1], arr[0], arr[2]])
-    // negate reverse
-    res = filter(arr, 'c', false)
+    // literal asc
+    res = filter(arr, 'c', 1)
     assertArray(res, [arr[2], arr[0], arr[1]])
     // no sort key
     res = filter(arr, null)

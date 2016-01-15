@@ -1,9 +1,9 @@
-var Vue = require('../../../../src/vue')
-var _ = require('../../../../src/util')
-var transition = require('../../../../src/transition')
-var Transition = require('../../../../src/transition/transition')
+var Vue = require('src')
+var _ = require('src/util')
+var transition = require('src/transition')
+var Transition = require('src/transition/transition')
 
-if (_.inBrowser && !_.isIE9) {
+if (!_.isIE9) {
   describe('Transition', function () {
 
     // insert a test css
@@ -51,32 +51,25 @@ if (_.inBrowser && !_.isIE9) {
         parent.appendChild(target)
         spy = jasmine.createSpy('transition skip')
         vm = new Vue()
-        spyOn(transition, 'apply')
+        spyOn(transition, 'applyTransition')
       })
 
       it('append', function () {
-        transition.append(el, parent, vm, spy)
+        transition.appendWithTransition(el, parent, vm, spy)
         expect(parent.lastChild).toBe(el)
         expect(spy).toHaveBeenCalled()
       })
 
       it('before', function () {
-        transition.before(el, target, vm, spy)
+        transition.beforeWithTransition(el, target, vm, spy)
         expect(parent.firstChild).toBe(el)
         expect(el.nextSibling).toBe(target)
         expect(spy).toHaveBeenCalled()
       })
 
       it('remove', function () {
-        transition.remove(target, vm, spy)
+        transition.removeWithTransition(target, vm, spy)
         expect(parent.childNodes.length).toBe(0)
-        expect(spy).toHaveBeenCalled()
-      })
-
-      it('removeThenAppend', function () {
-        transition.removeThenAppend(target, el, vm, spy)
-        expect(parent.childNodes.length).toBe(0)
-        expect(el.firstChild).toBe(target)
         expect(spy).toHaveBeenCalled()
       })
 
@@ -87,31 +80,33 @@ if (_.inBrowser && !_.isIE9) {
       var el, vm, op, cb
       beforeEach(function () {
         el = document.createElement('div')
+        el.textContent = 'hello'
         op = jasmine.createSpy('transition skip op')
         cb = jasmine.createSpy('transition skip cb')
         vm = new Vue()
       })
 
       it('skip el with no transition data', function () {
-        transition.apply(el, 1, op, vm, cb)
+        transition.applyTransition(el, 1, op, vm, cb)
         expect(op).toHaveBeenCalled()
         expect(cb).toHaveBeenCalled()
       })
 
       it('skip vm still being compiled', function () {
         el.__v_trans = new Transition(el, 'test', null, vm)
-        transition.apply(el, 1, op, vm, cb)
+        transition.applyTransition(el, 1, op, vm, cb)
         expect(op).toHaveBeenCalled()
         expect(cb).toHaveBeenCalled()
       })
 
       it('skip vm with parent still being compiled', function () {
         el.__v_trans = new Transition(el, 'test', null, vm)
-        var child = vm.$addChild({
-          el: el
+        var child = new Vue({
+          el: el,
+          parent: vm
         })
         expect(child._isCompiled).toBe(true)
-        transition.apply(el, 1, op, child, cb)
+        transition.applyTransition(el, 1, op, child, cb)
         expect(op).toHaveBeenCalled()
         expect(cb).toHaveBeenCalled()
       })
@@ -121,7 +116,7 @@ if (_.inBrowser && !_.isIE9) {
         _.transitionEndEvent = null
         el.__v_trans = new Transition(el, 'test', null, vm)
         vm.$mount(el)
-        transition.apply(el, 1, op, vm, cb)
+        transition.applyTransition(el, 1, op, vm, cb)
         expect(op).toHaveBeenCalled()
         expect(cb).toHaveBeenCalled()
         _.transitionEndEvent = e
@@ -134,6 +129,7 @@ if (_.inBrowser && !_.isIE9) {
       var vm, el, op, cb, hooks
       beforeEach(function (done) {
         el = document.createElement('div')
+        el.textContent = 'hello'
         vm = new Vue({ el: el })
         op = jasmine.createSpy('css op')
         cb = jasmine.createSpy('css cb')
@@ -159,7 +155,7 @@ if (_.inBrowser && !_.isIE9) {
         el.__v_trans = new Transition(el, 'test', hooks, vm)
         el.style.transition =
         el.style.WebkitTransition = 'opacity 0s ease'
-        transition.apply(el, 1, op, vm, cb)
+        transition.applyTransition(el, 1, op, vm, cb)
         expect(hooks.beforeEnter).toHaveBeenCalled()
         expect(hooks.enter).toHaveBeenCalled()
         _.nextTick(function () {
@@ -167,7 +163,7 @@ if (_.inBrowser && !_.isIE9) {
           expect(cb).toHaveBeenCalled()
           expect(hooks.afterEnter).toHaveBeenCalled()
           expect(el.classList.contains('test-enter')).toBe(false)
-          transition.apply(el, -1, op, vm, cb)
+          transition.applyTransition(el, -1, op, vm, cb)
           expect(hooks.beforeLeave).toHaveBeenCalled()
           expect(hooks.leave).toHaveBeenCalled()
           _.nextTick(function () {
@@ -182,7 +178,7 @@ if (_.inBrowser && !_.isIE9) {
 
       it('skip when no transition available', function (done) {
         el.__v_trans = new Transition(el, 'test-no-trans', hooks, vm)
-        transition.apply(el, 1, op, vm, cb)
+        transition.applyTransition(el, 1, op, vm, cb)
         expect(hooks.beforeEnter).toHaveBeenCalled()
         expect(hooks.enter).toHaveBeenCalled()
         _.nextTick(function () {
@@ -191,8 +187,8 @@ if (_.inBrowser && !_.isIE9) {
           expect(hooks.afterEnter).toHaveBeenCalled()
           expect(el.classList.contains('test-no-trans-enter')).toBe(false)
           // wait until transition.justEntered flag is off
-          _.nextTick(function () {
-            transition.apply(el, -1, op, vm, cb)
+          setTimeout(function () {
+            transition.applyTransition(el, -1, op, vm, cb)
             expect(hooks.beforeLeave).toHaveBeenCalled()
             expect(hooks.leave).toHaveBeenCalled()
             _.nextTick(function () {
@@ -202,7 +198,7 @@ if (_.inBrowser && !_.isIE9) {
               expect(el.classList.contains('test-no-trans-leave')).toBe(false)
               done()
             })
-          })
+          }, 17)
         })
       })
 
@@ -212,7 +208,7 @@ if (_.inBrowser && !_.isIE9) {
         // inline style
         el.style.transition =
         el.style.WebkitTransition = 'opacity ' + duration + ' ease'
-        transition.apply(el, 1, function () {
+        transition.applyTransition(el, 1, function () {
           document.body.appendChild(el)
           op()
         }, vm, cb)
@@ -237,7 +233,7 @@ if (_.inBrowser && !_.isIE9) {
         el.classList.add('test')
         // force a layout here so the transition can be triggered
         var f = el.offsetHeight
-        transition.apply(el, -1, op, vm, cb)
+        transition.applyTransition(el, -1, op, vm, cb)
         expect(hooks.beforeLeave).toHaveBeenCalled()
         expect(hooks.leave).toHaveBeenCalled()
         _.nextTick(function () {
@@ -259,7 +255,7 @@ if (_.inBrowser && !_.isIE9) {
       it('animation enter', function (done) {
         document.body.removeChild(el)
         el.__v_trans = new Transition(el, 'test-anim', hooks, vm)
-        transition.apply(el, 1, function () {
+        transition.applyTransition(el, 1, function () {
           document.body.appendChild(el)
           op()
         }, vm, cb)
@@ -281,7 +277,7 @@ if (_.inBrowser && !_.isIE9) {
 
       it('animation leave', function (done) {
         el.__v_trans = new Transition(el, 'test-anim', hooks, vm)
-        transition.apply(el, -1, op, vm, cb)
+        transition.applyTransition(el, -1, op, vm, cb)
         expect(hooks.beforeLeave).toHaveBeenCalled()
         expect(hooks.leave).toHaveBeenCalled()
         _.nextTick(function () {
@@ -316,7 +312,7 @@ if (_.inBrowser && !_.isIE9) {
         }
 
         el.__v_trans = new Transition(el, 'test', hooks, vm)
-        transition.apply(el, 1, function () {
+        transition.applyTransition(el, 1, function () {
           document.body.appendChild(el)
           op()
         }, vm, cb)
@@ -359,7 +355,7 @@ if (_.inBrowser && !_.isIE9) {
         }
 
         el.__v_trans = new Transition(el, 'test', hooks, vm)
-        transition.apply(el, 1, function () {
+        transition.applyTransition(el, 1, function () {
           document.body.appendChild(el)
           op()
         }, vm, cb)
@@ -389,14 +385,14 @@ if (_.inBrowser && !_.isIE9) {
       it('clean up unfinished css callback', function (done) {
         el.__v_trans = new Transition(el, 'test', null, vm)
         el.classList.add('test')
-        transition.apply(el, -1, function () {
+        transition.applyTransition(el, -1, function () {
           document.body.removeChild(el)
         }, vm, cb)
         // cancel early
         _.nextTick(function () {
           expect(el.__v_trans.pendingCssCb).toBeTruthy()
           expect(el.classList.contains('test-leave')).toBe(true)
-          transition.apply(el, 1, function () {
+          transition.applyTransition(el, 1, function () {
             document.body.appendChild(el)
           }, vm)
           expect(cb).not.toHaveBeenCalled()
@@ -412,7 +408,7 @@ if (_.inBrowser && !_.isIE9) {
       it('cache transition sniff results', function (done) {
         el.__v_trans = new Transition(el, 'test', null, vm)
         el.classList.add('test')
-        transition.apply(el, 1, op, vm)
+        transition.applyTransition(el, 1, op, vm)
         _.nextTick(function () {
           expect(el.__v_trans.typeCache['test-enter']).not.toBeUndefined()
           // for some reason window.getComputedStyle cannot be spied on in
@@ -424,7 +420,7 @@ if (_.inBrowser && !_.isIE9) {
               return 1
             }
           })
-          transition.apply(el, 1, op, vm)
+          transition.applyTransition(el, 1, op, vm)
           _.nextTick(function () {
             expect(calls).toBe(1)
             done()
@@ -440,6 +436,7 @@ if (_.inBrowser && !_.isIE9) {
       beforeEach(function () {
         hooks = {}
         el = document.createElement('div')
+        el.textContent = 'hello'
         document.body.appendChild(el)
         op = jasmine.createSpy('js transition op')
         cb = jasmine.createSpy('js transition cb')
@@ -456,7 +453,7 @@ if (_.inBrowser && !_.isIE9) {
           spy(this, el)
         }
         el.__v_trans = new Transition(el, 'test', hooks, vm)
-        transition.apply(el, 1, op, vm, cb)
+        transition.applyTransition(el, 1, op, vm, cb)
         expect(spy).toHaveBeenCalledWith(vm, el)
       })
 
@@ -470,7 +467,7 @@ if (_.inBrowser && !_.isIE9) {
           spy(this)
         }
         el.__v_trans = new Transition(el, 'test', hooks, vm)
-        transition.apply(el, 1, op, vm, cb)
+        transition.applyTransition(el, 1, op, vm, cb)
         expect(spy).toHaveBeenCalledWith(vm)
       })
 
@@ -484,17 +481,17 @@ if (_.inBrowser && !_.isIE9) {
           spy(this)
         }
         el.__v_trans = new Transition(el, 'test', hooks, vm)
-        transition.apply(el, -1, op, vm, cb)
+        transition.applyTransition(el, -1, op, vm, cb)
         expect(spy).toHaveBeenCalledWith(vm)
       })
 
       it('no def', function (done) {
         el.__v_trans = new Transition(el, 'test', null, vm)
-        transition.apply(el, 1, op, vm, cb)
+        transition.applyTransition(el, 1, op, vm, cb)
         _.nextTick(function () {
           expect(op).toHaveBeenCalled()
           expect(cb).toHaveBeenCalled()
-          transition.apply(el, -1, op, vm, cb)
+          transition.applyTransition(el, -1, op, vm, cb)
           _.nextTick(function () {
             expect(op.calls.count()).toBe(2)
             expect(cb.calls.count()).toBe(2)
@@ -520,9 +517,9 @@ if (_.inBrowser && !_.isIE9) {
           done()
         }
         el.__v_trans = new Transition(el, 'test', hooks, vm)
-        transition.apply(el, 1, op, vm, cb)
+        transition.applyTransition(el, 1, op, vm, cb)
         setTimeout(function () {
-          transition.apply(el, -1, op, vm)
+          transition.applyTransition(el, -1, op, vm)
           expect(leaveSpy).toHaveBeenCalled()
           setTimeout(function () {
             expect(cb).not.toHaveBeenCalled()

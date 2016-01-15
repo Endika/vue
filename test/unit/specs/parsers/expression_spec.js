@@ -1,5 +1,4 @@
-var expParser = require('../../../../src/parsers/expression')
-var _ = require('../../../../src/util')
+var expParser = require('src/parsers/expression')
 
 var testCases = [
   {
@@ -174,6 +173,27 @@ var testCases = [
     paths: ['$a', 'b', 'c', 'e']
   },
   {
+    // string with escaped quotes
+    exp: "'a\\'b' + c",
+    scope: {
+      c: '\'c'
+    },
+    expected: "a\'b\'c",
+    paths: ['c']
+  },
+  {
+    // dynamic sub path
+    exp: "a['b' + i + 'c']",
+    scope: {
+      i: 0,
+      a: {
+        'b0c': 123
+      }
+    },
+    expected: 123,
+    paths: ['a', 'i']
+  },
+  {
     // Math global, simple path
     exp: 'Math.PI',
     scope: {},
@@ -232,7 +252,7 @@ describe('Expression Parser', function () {
 
   testCases.forEach(function (testCase) {
     it('parse getter: ' + testCase.exp, function () {
-      var res = expParser.parse(testCase.exp, true)
+      var res = expParser.parseExpression(testCase.exp, true)
       expect(res.get(testCase.scope)).toEqual(testCase.expected)
     })
   })
@@ -240,8 +260,8 @@ describe('Expression Parser', function () {
   it('dynamic setter', function () {
     // make sure checkSetter works:
     // should add setter if a cache hit doesn't have hit function.
-    expParser.parse('a[b]')
-    var res = expParser.parse('a[b]', true)
+    expParser.parseExpression('a[b]')
+    var res = expParser.parseExpression('a[b]', true)
     var scope = {
       a: { c: 1 },
       b: 'c'
@@ -251,7 +271,7 @@ describe('Expression Parser', function () {
   })
 
   it('simple path setter', function () {
-    var res = expParser.parse('a.b.c', true)
+    var res = expParser.parseExpression('a.b.c', true)
     var scope = {}
     expect(function () {
       res.set(scope, 123)
@@ -262,48 +282,33 @@ describe('Expression Parser', function () {
   })
 
   it('cache', function () {
-    var res1 = expParser.parse('a + b')
-    var res2 = expParser.parse('a + b')
+    var res1 = expParser.parseExpression('a + b')
+    var res2 = expParser.parseExpression('a + b')
     expect(res1).toBe(res2)
   })
 
   describe('invalid expression', function () {
 
     beforeEach(function () {
-      spyOn(_, 'warn')
+      spyWarns()
     })
 
     it('should warn on invalid expression', function () {
-      expect(_.warn).not.toHaveBeenCalled()
-      expParser.parse('a--b"ffff')
-      expect(hasWarned(_, 'Invalid expression')).toBe(true)
+      expect(getWarnCount()).toBe(0)
+      expParser.parseExpression('a--b"ffff')
+      expect(hasWarned('Invalid expression')).toBe(true)
     })
 
-    if (leftHandThrows()) {
-      it('should warn on invalid left hand expression for setter', function () {
-        expect(_.warn).not.toHaveBeenCalled()
-        expParser.parse('a+b', true)
-        expect(hasWarned(_, 'Invalid setter function body')).toBe(true)
-      })
-    }
+    it('should warn on invalid setter expression', function () {
+      expect(getWarnCount()).toBe(0)
+      expParser.parseExpression('a+b', true)
+      expect(hasWarned('Invalid setter expression')).toBe(true)
+    })
 
     it('should warn if expression contains improper reserved keywords', function () {
-      expect(_.warn).not.toHaveBeenCalled()
-      expParser.parse('break + 1')
-      expect(hasWarned(_, 'Avoid using reserved keywords')).toBe(true)
+      expect(getWarnCount()).toBe(0)
+      expParser.parseExpression('break + 1')
+      expect(hasWarned('Avoid using reserved keywords')).toBe(true)
     })
   })
 })
-
-/**
- * check if creating a new Function with invalid left-hand
- * assignment would throw
- */
-
-function leftHandThrows () {
-  try {
-    new Function('a + b = 1')
-  } catch (e) {
-    return true
-  }
-}
